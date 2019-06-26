@@ -1,0 +1,14 @@
+{
+    "preprocessing": {
+        "sample_rate": 16000,
+        "num_fft": 2048,
+        "num_mels": 80,
+        "fmin": 50,
+        "preemph": 0.97,
+        "min_level_db": -100,
+        "hop_length": 200,
+        "win_length": 800,
+        "bits": 9,
+        "num_evaluation_utterances" : 20
+    }
+}
