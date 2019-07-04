@@ -27,11 +27,18 @@ def save_checkpoint(model, optimizer, step, checkpoint_dir):
 def train_fn(args, params):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = Model()
+    model = Model(mel_channels=params["preprocessing"]["num_mels"],
+                  encoder_channels=params["model"]["encoder_channels"],
+                  num_vq_embeddings=params["model"]["num_vq_embeddings"],
+                  vq_embedding_dim=params["model"]["vq_embedding_dim"],
+                  prenet_channels=params["model"]["prenet_channels"],
+                  num_speakers=params["model"]["num_speakers"],
+                  speaker_embedding_dim=params["model"]["speaker_embedding_dim"],
+                  decoder_channels=params["model"]["decoder_channels"],
+                  condition_channels=params["model"]["condition_channels"])
     model.to(device)
-    print(model)
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=params["model"]["learning_rate"])
 
     if args.resume is not None:
         print("Resume checkpoint from: {}:".format(args.resume))
@@ -44,13 +51,13 @@ def train_fn(args, params):
 
     dataset = MelDataset(meta_file=os.path.join(args.data_dir, "train.txt"),
                          speakers_file=os.path.join(args.data_dir, "speakers.txt"),
-                         sample_frames=150)
+                         sample_frames=params["model"]["sample_frames"])
 
-    dataloader = DataLoader(dataset, batch_size=32,
-                            shuffle=True, num_workers=1,
+    dataloader = DataLoader(dataset, batch_size=params["model"]["batch_size"],
+                            shuffle=True, num_workers=args.num_workers,
                             pin_memory=True)
 
-    num_epochs = 200000 // len(dataloader) + 1
+    num_epochs = params["model"]["num_steps"] // len(dataloader) + 1
     start_epoch = global_step // len(dataloader) + 1
 
     for epoch in range(start_epoch, num_epochs + 1):
@@ -78,7 +85,7 @@ def train_fn(args, params):
 
             global_step += 1
 
-            if global_step % 10000 == 0:
+            if global_step % params["model"]["checkpoint_interval"] == 0:
                 save_checkpoint(model, optimizer, global_step, args.checkpoint_dir)
 
         print("epoch:{}, recon loss:{:.2E}, vq loss:{:.2E}, perpexlity:{:.3f}"
@@ -91,10 +98,8 @@ if __name__ == "__main__":
     parser.add_argument("--resume", type=str, default=None, help="Checkpoint path to resume")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/", help="Directory to save checkpoints.")
     parser.add_argument("--data_dir", type=str, default="./data")
-    parser.add_argument("--gen_dir", type=str, default="./generated")
     args = parser.parse_args()
     with open("config.json") as f:
         params = json.load(f)
     os.makedirs(args.checkpoint_dir, exist_ok=True)
-    os.makedirs(args.gen_dir, exist_ok=True)
     train_fn(args, params)

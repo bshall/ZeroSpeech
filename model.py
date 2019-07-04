@@ -42,32 +42,32 @@ class VQEmbedding(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, mel_channels, encoder_channels, latent_channels):
         super(Encoder, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv1d(80, 512, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(512),
+            nn.Conv1d(mel_channels, encoder_channels, 5, 1, 2, bias=False),
+            nn.BatchNorm1d(encoder_channels),
             nn.ReLU(True),
-            nn.Conv1d(512, 512, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(512),
+            nn.Conv1d(encoder_channels, encoder_channels, 5, 1, 2, bias=False),
+            nn.BatchNorm1d(encoder_channels),
             nn.ReLU(True),
-            nn.Conv1d(512, 512, 4, 2, 1, bias=False),
-            nn.BatchNorm1d(512),
+            nn.Conv1d(encoder_channels, encoder_channels, 4, 2, 1, bias=False),
+            nn.BatchNorm1d(encoder_channels),
             nn.ReLU(True),
-            nn.Conv1d(512, 512, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(512),
+            nn.Conv1d(encoder_channels, encoder_channels, 5, 1, 2, bias=False),
+            nn.BatchNorm1d(encoder_channels),
             nn.ReLU(True),
-            nn.Conv1d(512, 512, 4, 2, 1, bias=False),
-            nn.BatchNorm1d(512),
+            nn.Conv1d(encoder_channels, encoder_channels, 4, 2, 1, bias=False),
+            nn.BatchNorm1d(encoder_channels),
             nn.ReLU(True),
-            nn.Conv1d(512, 512, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(512),
+            nn.Conv1d(encoder_channels, encoder_channels, 5, 1, 2, bias=False),
+            nn.BatchNorm1d(encoder_channels),
             nn.ReLU(True),
-            nn.Conv1d(512, 512, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(512),
+            nn.Conv1d(encoder_channels, encoder_channels, 5, 1, 2, bias=False),
+            nn.BatchNorm1d(encoder_channels),
             nn.ReLU(True),
         )
-        self.proj = nn.Linear(512, 64)
+        self.proj = nn.Linear(encoder_channels, latent_channels)
 
     def forward(self, mels):
         x = self.conv(mels.transpose(1, 2))
@@ -85,20 +85,24 @@ def get_gru_cell(gru):
 
 
 class Decoder(nn.Module):
-    def __init__(self):
+    def __init__(self, mel_channels, prenet_channels, num_speakers, speaker_embedding_dim,
+                 latent_channels, decoder_channels, condition_channels):
         super(Decoder, self).__init__()
+        self.mel_channels = mel_channels
+        self.decoder_channels = decoder_channels
+
         self.prenet = nn.Sequential(
-            nn.Linear(80, 256, bias=False),
+            nn.Linear(mel_channels, prenet_channels, bias=False),
             nn.ReLU(True),
             nn.Dropout(0.5),
-            nn.Linear(256, 256, bias=False),
+            nn.Linear(prenet_channels, prenet_channels, bias=False),
             nn.ReLU(True),
             nn.Dropout(0.5)
         )
-        self.speaker_embedding = nn.Embedding(102, 256)
-        self.rnn1 = nn.GRU(64 + 256, 192, batch_first=True, bidirectional=True)
-        self.rnn2 = nn.GRU(256 + 384, 1024, batch_first=True)
-        self.proj = nn.Linear(1024, 80)
+        self.speaker_embedding = nn.Embedding(num_speakers, speaker_embedding_dim)
+        self.rnn1 = nn.GRU(latent_channels + speaker_embedding_dim, condition_channels, batch_first=True, bidirectional=True)
+        self.rnn2 = nn.GRU(prenet_channels + 2*condition_channels, decoder_channels, batch_first=True)
+        self.proj = nn.Linear(decoder_channels, mel_channels)
 
         nn.init.uniform_(self.speaker_embedding.weight, -1./512, 1./512)
 
@@ -107,7 +111,7 @@ class Decoder(nn.Module):
         speakers = self.speaker_embedding(speakers)
         speakers = speakers.unsqueeze(1).expand(-1, frames, -1)
         x = torch.cat((x, speakers), dim=2)
-        x = F.interpolate(x.transpose(1, 2), scale_factor=3)
+        x = F.interpolate(x.transpose(1, 2), scale_factor=4)
         x, _ = self.rnn1(x.transpose(1, 2))
 
         m = self.prenet(m)
@@ -124,11 +128,11 @@ class Decoder(nn.Module):
             speaker = self.speaker_embedding(speaker)
             speaker = speaker.unsqueeze(1).expand(-1, x.size(1), -1)
             x = torch.cat((x, speaker), dim=2)
-            x = F.interpolate(x.transpose(1, 2), scale_factor=3)
+            x = F.interpolate(x.transpose(1, 2), scale_factor=4)
             x, _ = self.rnn1(x.transpose(1, 2))
 
-            h = torch.zeros(1, 1024, device=x.device)
-            m = torch.zeros(1, 80, device=x.device)
+            h = torch.zeros(1, self.decoder_channels, device=x.device)
+            m = torch.zeros(1, self.mel_channels, device=x.device)
 
             for z in tqdm(torch.unbind(x, dim=1), leave=False):
                 m = self.prenet(m)
@@ -143,11 +147,13 @@ class Decoder(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self, mel_channels, encoder_channels, num_vq_embeddings, vq_embedding_dim, prenet_channels,
+                 num_speakers, speaker_embedding_dim, decoder_channels, condition_channels):
         super(Model, self).__init__()
-        self.encoder = Encoder()
-        self.codebook = VQEmbedding(512, 64)
-        self.decoder = Decoder()
+        self.encoder = Encoder(mel_channels, encoder_channels, vq_embedding_dim)
+        self.codebook = VQEmbedding(num_vq_embeddings, vq_embedding_dim)
+        self.decoder = Decoder(mel_channels, prenet_channels, num_speakers, speaker_embedding_dim,
+                               vq_embedding_dim, decoder_channels, condition_channels)
 
     def forward(self, mels, speakers):
         x = self.encoder(mels[:, 1:, :])

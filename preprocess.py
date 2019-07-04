@@ -73,7 +73,7 @@ def write_metadata(metadata, out_dir, params):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="data")
-    parser.add_argument("--num-workers", type=int, default=cpu_count())
+    parser.add_argument("--num-workers", type=int, default=5)
     parser.add_argument("--language", type=str, default="./english")
     with open("config.json") as f:
         params = json.load(f)
