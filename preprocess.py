@@ -6,13 +6,13 @@ from multiprocessing import cpu_count
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from tqdm import tqdm
-from utils import load_wav, melspectrogram
+from utils import load_wav, melspectrogram, mulaw_encode
 import random
 import glob
 from itertools import chain
 
 
-def process_wav(wav_path, mel_path, params):
+def process_wav(wav_path, audio_path, mel_path, params):
     wav = load_wav(wav_path, sample_rate=params["preprocessing"]["sample_rate"])
     wav /= np.abs(wav).max() * 0.999
     mel = melspectrogram(wav, sample_rate=params["preprocessing"]["sample_rate"],
@@ -24,9 +24,18 @@ def process_wav(wav_path, mel_path, params):
                          win_length=params["preprocessing"]["win_length"],
                          fmin=params["preprocessing"]["fmin"])
 
+    length_diff = len(mel) * params["preprocessing"]["hop_length"] - len(wav)
+    wav = np.pad(wav, (0, length_diff), "constant")
+
+    pad = (40 - 8) // 2
+    mel = np.pad(mel, ((pad,), (0,)), "constant")
+    wav = np.pad(wav, (pad * params["preprocessing"]["hop_length"],), "constant")
+    wav = mulaw_encode(wav, mu=256)
+
     speaker = os.path.splitext(os.path.split(wav_path)[-1])[0].split("_")[0]
+    np.save(audio_path, wav)
     np.save(mel_path, mel)
-    return speaker, mel_path, len(mel)
+    return speaker, audio_path, mel_path, len(mel)
 
 
 def preprocess(wav_dirs, out_dir, num_workers, params):
@@ -73,7 +82,7 @@ def write_metadata(metadata, out_dir, params):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="data")
-    parser.add_argument("--num-workers", type=int, default=5)
+    parser.add_argument("--num-workers", type=int, default=cpu_count())
     parser.add_argument("--language", type=str, default="./english")
     with open("config.json") as f:
         params = json.load(f)

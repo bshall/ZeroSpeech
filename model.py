@@ -15,7 +15,7 @@ class VQEmbedding(nn.Module):
         self.commitment_cost = commitment_cost
 
     def forward(self, x):
-        x_flatten = x.view(-1, self.embedding_dim)
+        x_flatten = x.reshape(-1, self.embedding_dim)
 
         # Compute the distances to the codebook
         distances = torch.addmm(torch.sum(self.embedding.weight ** 2, dim=1) +
@@ -42,130 +42,118 @@ class VQEmbedding(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, mel_channels, encoder_channels, latent_channels):
+    def __init__(self):
         super(Encoder, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv1d(mel_channels, encoder_channels, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(encoder_channels),
+            nn.Conv1d(80, 512, 5, 1, 2, bias=False),
+            nn.BatchNorm1d(512),
             nn.ReLU(True),
-            nn.Conv1d(encoder_channels, encoder_channels, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(encoder_channels),
+            nn.Conv1d(512, 512, 5, 1, 2, bias=False),
+            nn.BatchNorm1d(512),
             nn.ReLU(True),
-            nn.Conv1d(encoder_channels, encoder_channels, 4, 2, 1, bias=False),
-            nn.BatchNorm1d(encoder_channels),
+            nn.Conv1d(512, 512, 5, 1, 2, bias=False),
+            nn.BatchNorm1d(512),
             nn.ReLU(True),
-            nn.Conv1d(encoder_channels, encoder_channels, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(encoder_channels),
-            nn.ReLU(True),
-            nn.Conv1d(encoder_channels, encoder_channels, 4, 2, 1, bias=False),
-            nn.BatchNorm1d(encoder_channels),
-            nn.ReLU(True),
-            nn.Conv1d(encoder_channels, encoder_channels, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(encoder_channels),
-            nn.ReLU(True),
-            nn.Conv1d(encoder_channels, encoder_channels, 5, 1, 2, bias=False),
-            nn.BatchNorm1d(encoder_channels),
-            nn.ReLU(True),
+            nn.Conv1d(512, 64, 1)
         )
-        self.proj = nn.Linear(encoder_channels, latent_channels)
 
     def forward(self, mels):
         x = self.conv(mels.transpose(1, 2))
-        x = self.proj(x.transpose(1, 2))
-        return x
+        return x.transpose(1, 2)
 
 
 def get_gru_cell(gru):
-    cell = nn.GRUCell(gru.input_size, gru.hidden_size)
-    cell.weight_hh.data = gru.weight_hh_l0.data
-    cell.weight_ih.data = gru.weight_ih_l0.data
-    cell.bias_hh.data = gru.bias_hh_l0.data
-    cell.bias_ih.data = gru.bias_ih_l0.data
-    return cell
+    gru_cell = nn.GRUCell(gru.input_size, gru.hidden_size)
+    gru_cell.weight_hh.data = gru.weight_hh_l0.data
+    gru_cell.weight_ih.data = gru.weight_ih_l0.data
+    gru_cell.bias_hh.data = gru.bias_hh_l0.data
+    gru_cell.bias_ih.data = gru.bias_ih_l0.data
+    return gru_cell
 
 
-class Decoder(nn.Module):
-    def __init__(self, mel_channels, prenet_channels, num_speakers, speaker_embedding_dim,
-                 latent_channels, decoder_channels, condition_channels):
-        super(Decoder, self).__init__()
-        self.mel_channels = mel_channels
-        self.decoder_channels = decoder_channels
+class Vocoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.rnn_channels = 896
+        self.quantization_channels = 256
+        self.hop_length = 200
 
-        self.prenet = nn.Sequential(
-            nn.Linear(mel_channels, prenet_channels, bias=False),
-            nn.ReLU(True),
-            nn.Dropout(0.5),
-            nn.Linear(prenet_channels, prenet_channels, bias=False),
-            nn.ReLU(True),
-            nn.Dropout(0.5)
-        )
-        self.speaker_embedding = nn.Embedding(num_speakers, speaker_embedding_dim)
-        self.rnn1 = nn.GRU(latent_channels + speaker_embedding_dim, condition_channels, batch_first=True, bidirectional=True)
-        self.rnn2 = nn.GRU(prenet_channels + 2*condition_channels, decoder_channels, batch_first=True)
-        self.proj = nn.Linear(decoder_channels, mel_channels)
+        self.speaker_embedding = nn.Embedding(102, 64)
+        self.rnn1 = nn.GRU(64 + 64, 128, num_layers=2, batch_first=True, bidirectional=True)
+        self.embedding = nn.Embedding(256, 256)
+        self.rnn2 = nn.GRU(256 + 2 * 128, 896, batch_first=True)
+        self.fc1 = nn.Linear(256, 256)
+        self.fc2 = nn.Linear(256, 256)
 
-        nn.init.uniform_(self.speaker_embedding.weight, -1./512, 1./512)
+    def forward(self, x, mels, speakers):
+        sample_frames = mels.size(1)
+        audio_slice_frames = x.size(1) // self.hop_length
+        pad = (sample_frames - audio_slice_frames) // 2
 
-    def forward(self, x, m, speakers):
-        batch_size, frames, _ = x.size()
         speakers = self.speaker_embedding(speakers)
-        speakers = speakers.unsqueeze(1).expand(-1, frames, -1)
-        x = torch.cat((x, speakers), dim=2)
-        x = F.interpolate(x.transpose(1, 2), scale_factor=4)
-        x, _ = self.rnn1(x.transpose(1, 2))
+        speakers = speakers.unsqueeze(1).expand(-1, sample_frames, -1)
 
-        m = self.prenet(m)
-        x, _ = self.rnn2(torch.cat((m, x), dim=2))
-        mels = self.proj(x)
-        return mels
+        mels = torch.cat((mels, speakers), dim=-1)
+        mels, _ = self.rnn1(mels)
+        mels = mels[:, pad:pad + audio_slice_frames, :]
 
-    def generate(self, x, speaker):
-        self.eval()
-        cell = get_gru_cell(self.rnn2)
-        output = []
+        mels = F.interpolate(mels.transpose(1, 2), scale_factor=self.hop_length)
+        mels = mels.transpose(1, 2)
 
-        with torch.no_grad():
-            speaker = self.speaker_embedding(speaker)
-            speaker = speaker.unsqueeze(1).expand(-1, x.size(1), -1)
-            x = torch.cat((x, speaker), dim=2)
-            x = F.interpolate(x.transpose(1, 2), scale_factor=4)
-            x, _ = self.rnn1(x.transpose(1, 2))
+        x = self.embedding(x)
 
-            h = torch.zeros(1, self.decoder_channels, device=x.device)
-            m = torch.zeros(1, self.mel_channels, device=x.device)
+        x, _ = self.rnn2(torch.cat((x, mels), dim=2))
 
-            for z in tqdm(torch.unbind(x, dim=1), leave=False):
-                m = self.prenet(m)
-                h = cell(torch.cat((m, z), dim=1), h)
-                m = self.proj(h)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
-                output.append(m.squeeze(0).cpu().numpy())
-
-            output = np.vstack(output)
-            self.train()
-            return output
+    # def generate(self, mel):
+    #     self.eval()
+    #
+    #     output = []
+    #     cell = get_gru_cell(self.rnn2)
+    #
+    #     with torch.no_grad():
+    #         mel, _ = self.rnn1(mel)
+    #
+    #         mel = F.interpolate(mel.transpose(1, 2), scale_factor=self.hop_length)
+    #         mel = mel.transpose(1, 2)
+    #
+    #         batch_size, sample_size, _ = mel.size()
+    #
+    #         h = torch.zeros(batch_size, self.rnn_channels, device=mel.device)
+    #         x = torch.zeros(batch_size, device=mel.device).fill_(self.quantization_channels // 2).long()
+    #
+    #         for m in tqdm(torch.unbind(mel, dim=1), leave=False):
+    #             x = self.embedding(x)
+    #             h = cell(torch.cat((x, m), dim=1), h)
+    #
+    #             x = F.relu(self.fc1(h))
+    #             logits = self.fc2(x)
+    #
+    #             posterior = F.softmax(logits, dim=1)
+    #             dist = torch.distributions.Categorical(posterior)
+    #
+    #             x = dist.sample()
+    #             output.append(2 * x.float().item() / (self.quantization_channels - 1.) - 1.)
+    #
+    #     output = np.asarray(output, dtype=np.float64)
+    #     output = mulaw_decode(output, self.quantization_channels)
+    #
+    #     self.train()
+    #     return output
 
 
 class Model(nn.Module):
-    def __init__(self, mel_channels, encoder_channels, num_vq_embeddings, vq_embedding_dim, prenet_channels,
-                 num_speakers, speaker_embedding_dim, decoder_channels, condition_channels):
+    def __init__(self):
         super(Model, self).__init__()
-        self.encoder = Encoder(mel_channels, encoder_channels, vq_embedding_dim)
-        self.codebook = VQEmbedding(num_vq_embeddings, vq_embedding_dim)
-        self.decoder = Decoder(mel_channels, prenet_channels, num_speakers, speaker_embedding_dim,
-                               vq_embedding_dim, decoder_channels, condition_channels)
+        self.encoder = Encoder()
+        self.codebook = VQEmbedding(512, 64)
+        self.decoder = Vocoder()
 
-    def forward(self, mels, speakers):
-        x = self.encoder(mels[:, 1:, :])
-        x, loss, perplexity = self.codebook(x)
-        mels = self.decoder(x, mels[:, :-1, :], speakers)
+    def forward(self, x, mels, speakers):
+        mels = self.encoder(mels)
+        mels, loss, perplexity = self.codebook(mels)
+        mels = self.decoder(x, mels, speakers)
         return mels, loss, perplexity
-
-    def generate(self, mels, speaker):
-        self.eval()
-        with torch.no_grad():
-            x = self.encoder(mels)
-            x, _, _ = self.codebook(x)
-            output = self.decoder.generate(x, speaker)
-        self.train()
-        return output

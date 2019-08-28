@@ -27,18 +27,10 @@ def save_checkpoint(model, optimizer, step, checkpoint_dir):
 def train_fn(args, params):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = Model(mel_channels=params["preprocessing"]["num_mels"],
-                  encoder_channels=params["model"]["encoder_channels"],
-                  num_vq_embeddings=params["model"]["num_vq_embeddings"],
-                  vq_embedding_dim=params["model"]["vq_embedding_dim"],
-                  prenet_channels=params["model"]["prenet_channels"],
-                  num_speakers=params["model"]["num_speakers"],
-                  speaker_embedding_dim=params["model"]["speaker_embedding_dim"],
-                  decoder_channels=params["model"]["decoder_channels"],
-                  condition_channels=params["model"]["condition_channels"])
+    model = Model()
     model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=params["model"]["learning_rate"])
+    optimizer = optim.Adam(model.parameters(), lr=4e-4)
 
     if args.resume is not None:
         print("Resume checkpoint from: {}:".format(args.resume))
@@ -51,7 +43,9 @@ def train_fn(args, params):
 
     dataset = MelDataset(meta_file=os.path.join(args.data_dir, "train.txt"),
                          speakers_file=os.path.join(args.data_dir, "speakers.txt"),
-                         sample_frames=params["model"]["sample_frames"])
+                         sample_frames=40,
+                         audio_slice_frames=8,
+                         hop_length=200)
 
     dataloader = DataLoader(dataset, batch_size=params["model"]["batch_size"],
                             shuffle=True, num_workers=args.num_workers,
@@ -65,11 +59,11 @@ def train_fn(args, params):
         running_vq_loss = 0
         running_perplexity = 0
 
-        for i, (mels, speakers) in enumerate(tqdm(dataloader), 1):
-            mels, speakers = mels.to(device), speakers.to(device)
+        for i, (audio, mels, speakers) in enumerate(tqdm(dataloader), 1):
+            audio, mels, speakers = audio.to(device), mels.to(device), speakers.to(device)
 
-            output, vq_loss, perplexity = model(mels, speakers)
-            recon_loss = F.mse_loss(output, mels[:, 1:, :])
+            output, vq_loss, perplexity = model(audio[:, :-1], mels, speakers)
+            recon_loss = F.cross_entropy(output.transpose(1, 2), audio[:, 1:])
             loss = recon_loss + vq_loss
 
             optimizer.zero_grad()
@@ -77,11 +71,11 @@ def train_fn(args, params):
             optimizer.step()
 
             running_recon_loss += recon_loss.item()
-            average_recon_loss = running_recon_loss / (i + 1)
+            average_recon_loss = running_recon_loss / i
             running_vq_loss += vq_loss.item()
-            average_vq_loss = running_vq_loss / (i + 1)
+            average_vq_loss = running_vq_loss / i
             running_perplexity += perplexity.item()
-            average_perplexity = running_perplexity / (i + 1)
+            average_perplexity = running_perplexity / i
 
             global_step += 1
 
