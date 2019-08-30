@@ -18,6 +18,9 @@ class VQEmbedding(nn.Module):
         self.register_buffer("ema_count", torch.zeros(num_embeddings))
         self.register_buffer("ema_weight", self.embedding.weight.clone())
         self.commitment_cost = commitment_cost
+        self.decay = 0.999
+        self.epsilon = 1e-5
+        self.num_samples = 5
 
     def forward(self, x):
         with torch.no_grad():
