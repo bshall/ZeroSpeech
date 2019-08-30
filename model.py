@@ -13,7 +13,8 @@ class VQEmbedding(nn.Module):
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim)
-        nn.init.normal_(self.embedding.weight)
+        # nn.init.normal_(self.embedding.weight)
+        nn.init.uniform_(self.embedding.weight, -1./512, 1./512)
 
         self.register_buffer("ema_count", torch.zeros(num_embeddings))
         self.register_buffer("ema_weight", self.embedding.weight.clone())
@@ -34,15 +35,15 @@ class VQEmbedding(nn.Module):
         dist = Categorical(logits=-distances)
         samples = dist.sample((self.num_samples,))
 
-        encodings = torch.zeros(samples.size(0), samples.size(1), self.num_embeddings)
+        encodings = torch.zeros(samples.size(0), samples.size(1), self.num_embeddings, device=x.device)
         encodings.scatter_(2, samples.unsqueeze(-1), 1)
         encodings = torch.mean(encodings, dim=0)
 
         if self.training:
-            self.ema_count = self.decay * self.ema_count + (1 - self._decay) * torch.sum(encodings, dim=0)
+            self.ema_count = self.decay * self.ema_count + (1 - self.decay) * torch.sum(encodings, dim=0)
 
             n = torch.sum(self.ema_count)
-            self.ema_count = (self.ema_count + self.epsilon) / (n + self.num_embeddings * self._epsilon) * n
+            self.ema_count = (self.ema_count + self.epsilon) / (n + self.num_embeddings * self.epsilon) * n
 
             dw = torch.matmul(encodings.t(), x_flatten)
             self.ema_weight = self.decay * self.ema_weight + (1 - self.decay) * dw
