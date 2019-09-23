@@ -7,53 +7,45 @@ from tqdm import tqdm
 from utils import mulaw_decode
 
 
-class VQEmbedding(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, commitment_cost=0.25):
-        super(VQEmbedding, self).__init__()
-        self.num_embeddings = num_embeddings
-        self.embedding_dim = embedding_dim
-        self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim)
-        # nn.init.normal_(self.embedding.weight)
-        nn.init.uniform_(self.embedding.weight, -1./512, 1./512)
-
-        self.register_buffer("ema_count", torch.zeros(num_embeddings))
-        self.register_buffer("ema_weight", self.embedding.weight.clone())
+class VQEmbeddingEMA(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim, commitment_cost=0.25, decay=0.999, epsilon=1e-5):
+        super(VQEmbeddingEMA, self).__init__()
         self.commitment_cost = commitment_cost
-        self.decay = 0.999
-        self.epsilon = 1e-5
-        self.num_samples = 5
+        self.decay = decay
+        self.epsilon = epsilon
+
+        embedding = torch.zeros(num_embeddings, embedding_dim)
+        embedding.uniform_(-1/num_embeddings, 1/num_embeddings)
+        self.register_buffer("embedding", embedding)
+        self.register_buffer("ema_count", torch.zeros(num_embeddings))
+        self.register_buffer("ema_weight", self.embedding.clone())
 
     def forward(self, x):
-        with torch.no_grad():
-            x_flatten = x.reshape(-1, self.embedding_dim)
+        M, D = self.embedding.size()
 
-            distances = torch.addmm(torch.sum(self.embedding.weight ** 2, dim=1) +
-                                    torch.sum(x_flatten ** 2, dim=1, keepdim=True),
-                                    x_flatten, self.embedding.weight.t(),
-                                    alpha=-2.0, beta=1.0)
+        x = x.transpose(1, 2)
+        x_flat = x.detach().reshape(-1, D)
 
-        dist = Categorical(logits=-distances)
-        samples = dist.sample((self.num_samples,))
+        distances = torch.addmm(torch.sum(self.embedding ** 2, dim=1) +
+                                torch.sum(x_flat ** 2, dim=1, keepdim=True),
+                                x_flat, self.embedding.t(),
+                                alpha=-2.0, beta=1.0)
 
-        encodings = torch.zeros(samples.size(0), samples.size(1), self.num_embeddings, device=x.device)
-        encodings.scatter_(2, samples.unsqueeze(-1), 1)
-        encodings = torch.mean(encodings, dim=0)
+        indices = torch.argmin(distances, dim=-1)
+        encodings = F.one_hot(indices, M).float()
+        quantized = F.embedding(indices, self.embedding)
+        quantized = quantized.view_as(x)
 
         if self.training:
             self.ema_count = self.decay * self.ema_count + (1 - self.decay) * torch.sum(encodings, dim=0)
 
             n = torch.sum(self.ema_count)
-            self.ema_count = (self.ema_count + self.epsilon) / (n + self.num_embeddings * self.epsilon) * n
+            self.ema_count = (self.ema_count + self.epsilon) / (n + M * self.epsilon) * n
 
-            dw = torch.matmul(encodings.t(), x_flatten)
+            dw = torch.matmul(encodings.t(), x_flat)
             self.ema_weight = self.decay * self.ema_weight + (1 - self.decay) * dw
 
-            self.embedding.weight.data.copy_(self.ema_weight / self.ema_count.unsqueeze(1))
-
-        with torch.no_grad():
-            quantized = self.embedding(samples)
-        quantized = torch.mean(quantized, dim=0)
-        quantized = quantized.view_as(x)
+            self.embedding = self.ema_weight / self.ema_count.unsqueeze(-1)
 
         e_latent_loss = F.mse_loss(x, quantized.detach())
         loss = self.commitment_cost * e_latent_loss
@@ -69,7 +61,7 @@ class VQEmbedding(nn.Module):
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
-        self.conv = nn.Sequential(
+        self.encoder = nn.Sequential(
             nn.Conv1d(80, 512, 5, 1, 2, bias=False),
             nn.BatchNorm1d(512),
             nn.ReLU(True),
@@ -83,8 +75,7 @@ class Encoder(nn.Module):
         )
 
     def forward(self, mels):
-        x = self.conv(mels.transpose(1, 2))
-        return x.transpose(1, 2)
+        return self.encoder(mels)
 
 
 def get_gru_cell(gru):
@@ -103,7 +94,7 @@ class Vocoder(nn.Module):
         self.quantization_channels = 256
         self.hop_length = 200
 
-        self.speaker_embedding = nn.Embedding(102, 64)
+        self.speaker_embedding = nn.Embedding(112, 64)
         self.rnn1 = nn.GRU(64 + 64, 128, num_layers=2, batch_first=True, bidirectional=True)
         self.embedding = nn.Embedding(256, 256)
         self.rnn2 = nn.GRU(256 + 2 * 128, 896, batch_first=True)
@@ -174,7 +165,7 @@ class Model(nn.Module):
     def __init__(self):
         super(Model, self).__init__()
         self.encoder = Encoder()
-        self.codebook = VQEmbedding(512, 64)
+        self.codebook = VQEmbeddingEMA(512, 64)
         self.decoder = Vocoder()
 
     def forward(self, x, mels, speakers):
@@ -188,7 +179,6 @@ class Model(nn.Module):
         with torch.no_grad():
             mel = self.encoder(mel)
             mel, _, perplexity = self.codebook(mel)
-            print(perplexity.item())
             output = self.decoder.generate(mel, speaker)
         self.train()
         return output

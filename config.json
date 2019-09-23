@@ -3,28 +3,12 @@
         "sample_rate": 16000,
         "num_fft": 2048,
         "num_mels": 80,
+        "num_mfcc": 13,
         "fmin": 50,
         "preemph": 0.97,
-        "min_level_db": -100,
+        "top_db": 80,
         "hop_length": 200,
         "win_length": 800,
-        "bits": 9,
-        "num_evaluation_utterances" : 20
-    },
-
-    "model": {
-        "encoder_channels": 512,
-        "num_vq_embeddings": 256,
-        "vq_embedding_dim": 64,
-        "prenet_channels": 256,
-        "num_speakers": 102,
-        "speaker_embedding_dim": 256,
-        "decoder_channels": 1024,
-        "condition_channels": 256,
-        "learning_rate": 1e-4,
-        "sample_frames": 128,
-        "num_steps": 200000,
-        "batch_size": 32,
-        "checkpoint_interval": 25000
+        "bits": 8
     }
 }

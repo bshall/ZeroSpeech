@@ -1,15 +1,14 @@
 import argparse
-import os
+from pathlib import Path
 import json
 
-import numpy as np
 from tqdm import tqdm
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from dataset import MelDataset
+from dataset import SpeechDataset
 from model import Model
 
 
@@ -18,8 +17,7 @@ def save_checkpoint(model, optimizer, step, checkpoint_dir):
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
         "step": step}
-    checkpoint_path = os.path.join(
-        checkpoint_dir, "model.ckpt-{}.pt".format(step))
+    checkpoint_path = checkpoint_dir / "model.ckpt-{}.pt".format(step)
     torch.save(checkpoint_state, checkpoint_path)
     print("Saved checkpoint: {}".format(checkpoint_path))
 
@@ -41,28 +39,26 @@ def train_fn(args, params):
     else:
         global_step = 0
 
-    dataset = MelDataset(meta_file=os.path.join(args.data_dir, "train.txt"),
-                         speakers_file=os.path.join(args.data_dir, "speakers.txt"),
-                         sample_frames=40,
-                         audio_slice_frames=8,
-                         hop_length=200)
+    print(optimizer.defaults)
+    dataset = SpeechDataset(metadata_path=Path("./data/english/train.json"),
+                            sample_frames=40,
+                            audio_slice_frames=8,
+                            hop_length=200)
 
-    dataloader = DataLoader(dataset, batch_size=params["model"]["batch_size"],
+    dataloader = DataLoader(dataset, batch_size=32,
                             shuffle=True, num_workers=args.num_workers,
                             pin_memory=True)
 
-    num_epochs = params["model"]["num_steps"] // len(dataloader) + 1
+    num_epochs = 250000 // len(dataloader) + 1
     start_epoch = global_step // len(dataloader) + 1
 
     for epoch in range(start_epoch, num_epochs + 1):
-        running_recon_loss = 0
-        running_vq_loss = 0
-        running_perplexity = 0
+        average_recon_loss = average_vq_loss = average_perplexity = 0
 
-        for i, (audio, mels, speakers) in enumerate(tqdm(dataloader), 1):
-            audio, mels, speakers = audio.to(device), mels.to(device), speakers.to(device)
+        for i, (audio, mels, mfccs, speakers) in enumerate(tqdm(dataloader), 1):
+            audio, mfccs, speakers = audio.to(device), mfccs.to(device), speakers.to(device)
 
-            output, vq_loss, perplexity = model(audio[:, :-1], mels, speakers)
+            output, vq_loss, perplexity = model(audio[:, :-1], mfccs, speakers)
             recon_loss = F.cross_entropy(output.transpose(1, 2), audio[:, 1:])
             loss = recon_loss + vq_loss
 
@@ -70,17 +66,14 @@ def train_fn(args, params):
             loss.backward()
             optimizer.step()
 
-            running_recon_loss += recon_loss.item()
-            average_recon_loss = running_recon_loss / i
-            running_vq_loss += vq_loss.item()
-            average_vq_loss = running_vq_loss / i
-            running_perplexity += perplexity.item()
-            average_perplexity = running_perplexity / i
+            average_recon_loss += (recon_loss.item() - average_recon_loss) / i
+            average_vq_loss += (vq_loss.item() - average_vq_loss) / i
+            average_perplexity += (perplexity.item() - average_perplexity) / i
 
             global_step += 1
 
-            if global_step % params["model"]["checkpoint_interval"] == 0:
-                save_checkpoint(model, optimizer, global_step, args.checkpoint_dir)
+            if global_step % 25000 == 0:
+                save_checkpoint(model, optimizer, global_step, Path(args.checkpoint_dir))
 
         print("epoch:{}, recon loss:{:.2E}, vq loss:{:.2E}, perpexlity:{:.3f}"
               .format(epoch, average_recon_loss, average_vq_loss, average_perplexity))
@@ -88,12 +81,12 @@ def train_fn(args, params):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers.")
+    parser.add_argument("--num_workers", type=int, default=6, help="Number of dataloader workers.")
     parser.add_argument("--resume", type=str, default=None, help="Checkpoint path to resume")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/", help="Directory to save checkpoints.")
     parser.add_argument("--data_dir", type=str, default="./data")
     args = parser.parse_args()
     with open("config.json") as f:
         params = json.load(f)
-    os.makedirs(args.checkpoint_dir, exist_ok=True)
+    Path(args.checkpoint_dir).mkdir(parents=True, exist_ok=True)
     train_fn(args, params)
