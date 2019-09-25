@@ -111,7 +111,7 @@ def main():
     with open("config.json") as f:
         params = json.load(f)
     args = parser.parse_args()
-    wav_dirs = Path("../../Datasets/ZeroSpeech2019/")
+    wav_dirs = Path("./ZeroSpeech2019/")
     preprocess(wav_dirs, Path(args.output), args.num_workers, params)
 
 

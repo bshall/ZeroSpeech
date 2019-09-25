@@ -56,9 +56,9 @@ def train_fn(args, params):
         average_recon_loss = average_vq_loss = average_perplexity = 0
 
         for i, (audio, mels, mfccs, speakers) in enumerate(tqdm(dataloader), 1):
-            audio, mfccs, speakers = audio.to(device), mfccs.to(device), speakers.to(device)
+            audio, mels, speakers = audio.to(device), mels.to(device), speakers.to(device)
 
-            output, vq_loss, perplexity = model(audio[:, :-1], mfccs, speakers)
+            output, vq_loss, perplexity = model(audio[:, :-1], mels, speakers)
             recon_loss = F.cross_entropy(output.transpose(1, 2), audio[:, 1:])
             loss = recon_loss + vq_loss
 

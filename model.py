@@ -62,13 +62,19 @@ class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv1d(80, 512, 5, 1, 2, bias=False),
+            nn.Conv1d(80, 512, 3, 1, 1, bias=False),
             nn.BatchNorm1d(512),
             nn.ReLU(True),
-            nn.Conv1d(512, 512, 5, 1, 2, bias=False),
+            nn.Conv1d(512, 512, 3, 1, 1, bias=False),
             nn.BatchNorm1d(512),
             nn.ReLU(True),
-            nn.Conv1d(512, 512, 5, 1, 2, bias=False),
+            nn.Conv1d(512, 512, 4, 2, 1, bias=False),
+            nn.BatchNorm1d(512),
+            nn.ReLU(True),
+            nn.Conv1d(512, 512, 3, 1, 1, bias=False),
+            nn.BatchNorm1d(512),
+            nn.ReLU(True),
+            nn.Conv1d(512, 512, 3, 1, 1, bias=False),
             nn.BatchNorm1d(512),
             nn.ReLU(True),
             nn.Conv1d(512, 64, 1)
@@ -102,6 +108,9 @@ class Vocoder(nn.Module):
         self.fc2 = nn.Linear(256, 256)
 
     def forward(self, x, mels, speakers):
+        mels = F.interpolate(mels.transpose(1, 2), scale_factor=2)
+        mels = mels.transpose(1, 2)
+
         sample_frames = mels.size(1)
         audio_slice_frames = x.size(1) // self.hop_length
         pad = (sample_frames - audio_slice_frames) // 2
@@ -129,6 +138,9 @@ class Vocoder(nn.Module):
         cell = get_gru_cell(self.rnn2)
 
         with torch.no_grad():
+            mel = F.interpolate(mel.transpose(1, 2), scale_factor=2)
+            mel = mel.transpose(1, 2)
+
             speakers = self.speaker_embedding(speaker)
             speakers = speakers.unsqueeze(1).expand(-1, mel.size(1), -1)
 
