@@ -77,6 +77,12 @@ class Encoder(nn.Module):
             nn.Conv1d(512, 512, 3, 1, 1, bias=False),
             nn.BatchNorm1d(512),
             nn.ReLU(True),
+            nn.Conv1d(512, 512, 1, bias=False),
+            nn.BatchNorm1d(512),
+            nn.ReLU(True),
+            nn.Conv1d(512, 512, 1, bias=False),
+            nn.BatchNorm1d(512),
+            nn.ReLU(True),
             nn.Conv1d(512, 64, 1)
         )
 

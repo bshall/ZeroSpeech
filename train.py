@@ -4,6 +4,7 @@ import json
 
 from tqdm import tqdm
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -45,11 +46,11 @@ def train_fn(args, params):
                             audio_slice_frames=8,
                             hop_length=200)
 
-    dataloader = DataLoader(dataset, batch_size=32,
+    dataloader = DataLoader(dataset, batch_size=64,
                             shuffle=True, num_workers=args.num_workers,
                             pin_memory=True)
 
-    num_epochs = 250000 // len(dataloader) + 1
+    num_epochs = 400000 // len(dataloader) + 1
     start_epoch = global_step // len(dataloader) + 1
 
     for epoch in range(start_epoch, num_epochs + 1):
@@ -64,6 +65,9 @@ def train_fn(args, params):
 
             optimizer.zero_grad()
             loss.backward()
+
+            nn.utils.clip_grad_norm_(model.parameters(), 1)
+
             optimizer.step()
 
             average_recon_loss += (recon_loss.item() - average_recon_loss) / i
