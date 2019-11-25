@@ -1,39 +1,42 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-import json
+import csv
 from random import randint
 from pathlib import Path
 
 
 class SpeechDataset(Dataset):
-    def __init__(self, metadata_path, sample_frames, hop_length):
+    def __init__(self, root, sample_frames, hop_length, sample_rate):
+        self.root = Path(root)
         self.sample_frames = sample_frames
         self.hop_length = hop_length
 
-        with metadata_path.open() as file:
-            metadata = json.load(file)
+        with open(self.root / "speakers.csv") as file:
+            reader = csv.reader(file)
+            self.speakers = sorted([speaker for speaker, in reader])
 
-        self.speakers = sorted(metadata.keys())
-        self.metadata = list()
-        for speaker, paths in metadata.items():
-            self.metadata.extend([(speaker, path) for path, length in paths if length > sample_frames + 1])
+        min_duration = (sample_frames + 2) * hop_length / sample_rate
+        with open(self.root / "train.csv") as file:
+            reader = csv.reader(file)
+            self.manifest = [Path(out_path) for _, _, duration, out_path in reader if float(duration) > min_duration]
 
     def __len__(self):
-        return len(self.metadata)
+        return len(self.manifest)
 
     def __getitem__(self, index):
-        speaker, path = self.metadata[index]
-        path = Path(path)
+        path = self.manifest[index]
+        path = self.root.parent / path
 
         audio = np.load(path.with_suffix(".wav.npy"))
         mel = np.load(path.with_suffix(".mel.npy"))
 
-        pos = randint(0, mel.shape[-1] - self.sample_frames - 2)
-        mel = mel[:, pos:pos + self.sample_frames]
+        pos = randint(1, mel.shape[-1] - self.sample_frames - 2)
+        mel = mel[:, pos - 1:pos + self.sample_frames + 1]
 
         audio = audio[pos * self.hop_length:(pos + self.sample_frames) * self.hop_length + 1]
 
-        speaker = self.speakers.index(speaker)
+        speaker = self.speakers.index(path.parts[-2])
 
         return torch.LongTensor(audio), torch.FloatTensor(mel), speaker
+

@@ -1,5 +1,6 @@
 import argparse
 import json
+import csv
 from pathlib import Path
 import torch
 import numpy as np
@@ -16,15 +17,14 @@ if __name__ == "__main__":
     parser.add_argument("--speaker", type=str)
     args = parser.parse_args()
 
-    with Path("config.json").open() as file:
+    with open("config.json") as file:
         params = json.load(file)
 
     with open(args.speaker_list) as file:
-        metadata = json.load(file)
-    speakers = sorted(metadata.keys())
+        reader = csv.reader(file)
+        speakers = sorted([speaker for speaker, in reader])
 
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = Model(in_channels=params["preprocessing"]["num_mels"],
                   encoder_channels=params["model"]["encoder"]["channels"],
@@ -56,4 +56,4 @@ if __name__ == "__main__":
 
     utterance_id = mel_path.stem
     path = Path(gen_dir) / "gen_{}_to_{}_model_steps_{}.wav".format(utterance_id, args.speaker, model_step)
-    librosa.output.write_wav(path, output.astype(np.float32), sr=16000)
+    librosa.output.write_wav(path, output.astype(np.float32), sr=params["preprocessing"]["sample_rate"])

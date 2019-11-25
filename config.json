@@ -3,6 +3,7 @@
         "sample_rate": 16000,
         "num_fft": 2048,
         "num_mels": 80,
+        "num_mfccs": 13,
         "fmin": 50,
         "preemph": 0.97,
         "top_db": 80,
@@ -21,7 +22,7 @@
         },
         "vocoder": {
             "conditioning_channels": 128,
-            "num_speakers": 69,
+            "num_speakers": 40,
             "speaker_embedding_dim": 64,
             "embedding_dim": 256,
             "rnn_channels": 896,

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical, RelaxedOneHotCategorical
 import numpy as np
 from tqdm import tqdm
-from utils import mulaw_decode
+from preprocess import mulaw_decode
 import math
 
 
@@ -104,7 +104,7 @@ class Encoder(nn.Module):
     def __init__(self, in_channels, channels, out_channels):
         super(Encoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv1d(in_channels, channels, 3, 1, 1, bias=False),
+            nn.Conv1d(in_channels, channels, 3, 1, 0, bias=False),
             nn.BatchNorm1d(channels),
             nn.ReLU(True),
             nn.Conv1d(channels, channels, 3, 1, 1, bias=False),
@@ -233,13 +233,8 @@ class Model(nn.Module):
     def generate(self, mel, speaker):
         self.eval()
         with torch.no_grad():
-            print(mel.shape)
             mel = self.encoder(mel)
-            print(mel.shape)
-            print(self.codebook.commitment_cost)
             mel, _, perplexity = self.codebook(mel)
-            print(perplexity)
-            print(self.codebook.embedding)
             output = self.decoder.generate(mel, speaker)
         self.train()
         return output

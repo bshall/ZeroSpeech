@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from dataset_new import SpeechDataset
+from dataset import SpeechDataset
 from model import Model
 import apex.amp as amp
 
@@ -59,7 +59,7 @@ def train_fn(args, params):
     else:
         global_step = 0
 
-    dataset = SpeechDataset(root="datasets/ZeroSpeech2017/english",
+    dataset = SpeechDataset(root="datasets/ZeroSpeech2015/english",
                             sample_frames=params["training"]["sample_frames"],
                             hop_length=params["preprocessing"]["hop_length"],
                             sample_rate=params["preprocessing"]["sample_rate"])
