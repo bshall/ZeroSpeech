@@ -22,7 +22,7 @@
         },
         "vocoder": {
             "conditioning_channels": 128,
-            "num_speakers": 40,
+            "num_speakers": 102,
             "speaker_embedding_dim": 64,
             "embedding_dim": 256,
             "rnn_channels": 896,

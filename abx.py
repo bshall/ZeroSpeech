@@ -62,12 +62,13 @@ if __name__ == "__main__":
 
     task_path = Path("../ABX/info_test/by-context-across-speakers.abx")
     # task_path = Path("../../Datasets/zerospeech2017/data/test/english/1s/1s_across.abx")
+    # task_path = Path("english_across.abx")
     feature_path = Path("./features.features")
     distance_path = Path("./data.distance")
     score_path = Path("./data.score")
     analyze_path = Path("./data.csv")
 
-    convert(str("encoded"))
+    convert(str("encoded/ZeroSpeech2019/english/test/"))
 
     distances.compute_distances(
         str(feature_path), "features", str(task_path),

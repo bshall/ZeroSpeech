@@ -59,7 +59,7 @@ def train_fn(args, params):
     else:
         global_step = 0
 
-    dataset = SpeechDataset(root="datasets/ZeroSpeech2015/english",
+    dataset = SpeechDataset(root=args.data_dir,
                             sample_frames=params["training"]["sample_frames"],
                             hop_length=params["preprocessing"]["hop_length"],
                             sample_rate=params["preprocessing"]["sample_rate"])
@@ -110,9 +110,9 @@ def train_fn(args, params):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_workers", type=int, default=6, help="Number of dataloader workers.")
+    parser.add_argument("--checkpoint-dir", type=str, help="Directory to save checkpoints.")
+    parser.add_argument("--data-dir", type=str)
     parser.add_argument("--resume", type=str, default=None, help="Checkpoint path to resume")
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/", help="Directory to save checkpoints.")
-    parser.add_argument("--data_dir", type=str, default="./data")
     args = parser.parse_args()
     with open("config.json") as file:
         params = json.load(file)
