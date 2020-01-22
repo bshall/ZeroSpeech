@@ -1,0 +1,115 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    padding: 0;
+    margin: 0;
+    font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    color: #606c71;
+}
+
+
+
+h1, h2, h3, h4, h5, h6 {
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    font-weight: normal;
+    color: #159957;
+}
+
+@media only screen and (min-width: 64em) {
+    header {
+        max-width: 64rem;
+        padding: 2rem 6rem 0rem 6rem;
+        margin: 0 auto;
+        font-size: 1.1rem;
+    }
+
+    main {
+        max-width: 64rem;
+        padding: 2rem 6rem;
+        margin: 0 auto;
+        font-size: 1.1rem;
+    }
+}
+
+@media only screen and (min-width: 42em) and (max-width: 64em) {
+    header {
+        padding: 2rem 4rem 0rem 4rem;
+        font-size: 1.1rem;
+    }
+
+    main {
+        padding: 2rem 4rem;
+        font-size: 1.1rem;
+    }
+}
+
+@media only screen and (max-width: 42em) {
+    header {
+        padding: 2rem 1rem 0rem 1rem;
+        font-size: 1rem;
+    }
+
+    main {
+        padding: 2rem 1rem;
+        font-size: 1rem;
+    }
+}
+
+header, main {
+    word-wrap: break-word;
+    max-width: 78rem;
+}
+
+main :first-child {
+    margin-top: 0;
+}
+
+p {
+    margin-bottom: 1em;
+}
+
+hr {
+    height: 2px;
+    padding: 0;
+    margin: 1rem 0;
+    background-color: #eff0f1;
+    border: 0;
+}
+
+a {
+  color: #1e6bb8;
+  text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+ul {
+    margin: 0;
+}
+
+table {
+    display: block;
+    width: 100%;
+    overflow: auto;
+    word-break: normal;
+    word-break: keep-all; // For Firefox to horizontally scroll wider tables.
+    -webkit-overflow-scrolling: touch;
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+th {
+    font-weight: bold;
+}
+
+th, td {
+    padding: 0.5rem 1rem;
+    border: 1px solid #e9ebec;
+}

@@ -1,4 +1,0 @@
-numpy>=1.17
-scipy>=1.4
-librosa>=0.7
-tqdm
