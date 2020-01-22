@@ -51,3 +51,8 @@ Voice conversion samples can be found here.
     ```
     python encode.py --checkpoint=path/to/checkpoint --in-dir=datasets/ZeroSpeech2019/english/test --out-dir=encoded/ZeroSpeech2019/english/test
     ```
+    
+10. Evaluate ABX:
+    ```
+    python abx.py --task-type=across --task-path=path/to/abxtask --feature-dir=encoded/ZeroSpeech2019/english/test --out-dir=abx/ZeroSpeech2019/test
+    ```

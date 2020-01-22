@@ -1,21 +1,14 @@
-from ABXpy.misc.any2h5features import convert
+import argparse
+import ast
+from pathlib import Path
 
-import ABXpy.task
+import ABXpy.analyze as analyze
 import ABXpy.distances.distances as distances
 import ABXpy.distances.metrics.cosine as cosine
 import ABXpy.distances.metrics.dtw as dtw
 import ABXpy.score as score
-import ABXpy.misc.items as items
-import ABXpy.analyze as analyze
-
-import ast
-import numpy as np
 import pandas
-
-import argparse
-from pathlib import Path
-from tqdm import tqdm
-import json
+from ABXpy.misc.any2h5features import convert
 
 
 def dtw_cosine_distance(x, y, normalized):
@@ -48,6 +41,34 @@ def average_abx(filename, task_type):
     return average
 
 
+def evaluate_abx(args):
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    feature_path = out_dir / "features.features"
+    distance_path = out_dir / "data.distance"
+    score_path = out_dir / "data.score"
+    analyze_path = out_dir / "data.csv"
+
+    if not feature_path.exists():
+        convert(args.feature_dir, h5_filename=str(feature_path))
+
+    if not distance_path.exists():
+        distances.compute_distances(
+            str(feature_path), "features", str(args.task_path),
+            str(distance_path), dtw_cosine_distance,
+            normalized=True, n_cpu=6)
+
+    if not score_path.exists():
+        score.score(str(args.task_path), str(distance_path), str(score_path))
+
+    if not analyze_path.exists():
+        analyze.analyze(str(args.task_path), str(score_path), str(analyze_path))
+
+    abx = average_abx(str(analyze_path), args.task_type)
+    print("average abx: {:.3f}".format(abx))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-type", type=str)
@@ -55,28 +76,4 @@ if __name__ == "__main__":
     parser.add_argument("--feature-dir", type=str)
     parser.add_argument("--out-dir", type=str)
     args = parser.parse_args()
-
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # task_path = Path("../ABX/info_test/by-context-across-speakers.abx")
-    # task_path = Path("../../Datasets/zerospeech2017/data/test/english/1s/1s_across.abx")
-    # task_path = Path("../../Datasets/zerospeech2017/data/test/french/1s/1s_across.abx")
-    # task_path = Path("english_across.abx")
-    feature_path = out_dir / "features.features"
-    distance_path = out_dir / "data.distance"
-    score_path = out_dir / "data.score"
-    analyze_path = out_dir / "data.csv"
-
-    convert(args.feature_dir, h5_filename=str(feature_path))
-
-    distances.compute_distances(
-        str(feature_path), "features", str(args.task_path),
-        str(distance_path), dtw_cosine_distance,
-        normalized=True, n_cpu=6)
-
-    score.score(str(args.task_path), str(distance_path), str(score_path))
-
-    analyze.analyze(str(args.task_path), str(score_path), str(analyze_path))
-
-    print(average_abx(str(analyze_path), args.task_type))
+    evaluate_abx(args)
