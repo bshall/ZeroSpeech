@@ -1,11 +1,32 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Categorical, RelaxedOneHotCategorical
+from torch.distributions import Categorical
 import numpy as np
 from tqdm import tqdm
 from preprocess import mulaw_decode
-import math
+
+
+class Jitter(nn.Module):
+    def __init__(self, p):
+        super().__init__()
+        prob = torch.Tensor([p / 2, 1 - p, p / 2])
+        self.register_buffer("prob", prob)
+
+    def forward(self, x):
+        if not self.training:
+            return x
+        else:
+            batch_size, sample_size, channels = x.size()
+
+            dist = Categorical(self.prob)
+            index = dist.sample(torch.Size([batch_size, sample_size])) - 1
+            index[:, 0].clamp_(0, 1)
+            index[:, -1].clamp_(-1, 0)
+            index += torch.arange(sample_size, device=x.device)
+
+            x = torch.gather(x, 1, index.unsqueeze(-1).expand(-1, -1, channels))
+        return x
 
 
 class VQEmbeddingEMA(nn.Module):
@@ -60,46 +81,6 @@ class VQEmbeddingEMA(nn.Module):
         return quantized, loss, perplexity
 
 
-class VQEmbeddingGSSoft(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim):
-        super(VQEmbeddingGSSoft, self).__init__()
-
-        self.embedding = nn.Embedding(num_embeddings, embedding_dim)
-        nn.init.uniform_(self.embedding.weight, -1/num_embeddings, 1/num_embeddings)
-
-    def forward(self, x):
-        B, C, T = x.size()
-        M, D = self.embedding.weight.size()
-
-        x = x.transpose(1, 2)
-        x_flat = x.reshape(-1, D)
-
-        distances = torch.addmm(torch.sum(self.embedding.weight ** 2, dim=1) +
-                                torch.sum(x_flat ** 2, dim=1, keepdim=True),
-                                x_flat, self.embedding.weight.t(),
-                                alpha=-2.0, beta=1.0)
-        distances = distances.view(B, T, M)
-
-        dist = RelaxedOneHotCategorical(0.5, logits=-distances)
-        #if self.training:
-        samples = dist.rsample()
-        #else:
-        #    samples = torch.argmax(dist.probs, dim=-1)
-        #    samples = F.one_hot(samples, M).float()
-
-        quantized = torch.matmul(samples, self.embedding.weight)
-        quantized = quantized.view_as(x)
-
-        KL = dist.probs * (dist.logits + math.log(M))
-        KL[(dist.probs == 0).expand_as(KL)] = 0
-        KL = KL.sum(dim=(1, 2)).mean()
-
-        avg_probs = torch.mean(samples, dim=(0, 1))
-        perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
-
-        return quantized, KL, perplexity
-
-
 class Encoder(nn.Module):
     def __init__(self, in_channels, channels, out_channels):
         super(Encoder, self).__init__()
@@ -121,10 +102,6 @@ class Encoder(nn.Module):
             nn.ReLU(True),
             nn.Conv1d(channels, out_channels, 1),
         )
-
-        # for m in self.encoder.modules():
-        #     if isinstance(m, nn.Conv1d):
-        #         nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
 
     def forward(self, mels):
         return self.encoder(mels)
@@ -217,16 +194,19 @@ class Vocoder(nn.Module):
 class Model(nn.Module):
     def __init__(self, in_channels, encoder_channels, num_codebook_embeddings, codebook_embedding_dim, num_speakers,
                  speaker_embedding_dim, conditioning_channels, embedding_dim, rnn_channels, fc_channels,
-                 bits, hop_length):
+                 bits, hop_length, jitter=0):
         super(Model, self).__init__()
         self.encoder = Encoder(in_channels, encoder_channels, codebook_embedding_dim)
         self.codebook = VQEmbeddingEMA(num_codebook_embeddings, codebook_embedding_dim)
         self.decoder = Vocoder(codebook_embedding_dim, num_speakers, speaker_embedding_dim, conditioning_channels,
                                embedding_dim, rnn_channels, fc_channels, bits, hop_length)
+        self.jitter = Jitter(jitter) if jitter > 0 else None
 
     def forward(self, x, mels, speakers):
         mels = self.encoder(mels)
         mels, loss, perplexity = self.codebook(mels)
+        if self.jitter is not None:
+            mels = self.jitter(mels)
         mels = self.decoder(x, mels, speakers)
         return mels, loss, perplexity
 
@@ -235,29 +215,7 @@ class Model(nn.Module):
         with torch.no_grad():
             mel = self.encoder(mel)
             mel, _, perplexity = self.codebook(mel)
-            output = self.decoder.generate(mel, speaker)
-        self.train()
-        return output
-
-
-class ModelGSSOFT(nn.Module):
-    def __init__(self):
-        super(ModelGSSOFT, self).__init__()
-        self.encoder = Encoder()
-        self.codebook = VQEmbeddingGSSoft(2048, 64)
-        self.decoder = Vocoder()
-
-    def forward(self, x, mels, speakers):
-        mels = self.encoder(mels)
-        mels, KL, perplexity = self.codebook(mels)
-        mels = self.decoder(x, mels, speakers)
-        return mels, KL, perplexity
-
-    def generate(self, mel, speaker):
-        self.eval()
-        with torch.no_grad():
-            mel = self.encoder(mel)
-            mel, _, perplexity = self.codebook(mel)
+            mel = self.jitter(mel)
             output = self.decoder.generate(mel, speaker)
         self.train()
         return output
