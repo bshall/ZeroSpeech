@@ -3,28 +3,39 @@
         "sample_rate": 16000,
         "num_fft": 2048,
         "num_mels": 80,
+        "num_mfccs": 13,
         "fmin": 50,
         "preemph": 0.97,
-        "min_level_db": -100,
+        "top_db": 80,
         "hop_length": 200,
         "win_length": 800,
-        "bits": 9,
-        "num_evaluation_utterances" : 20
+        "bits": 8
     },
 
     "model": {
-        "encoder_channels": 512,
-        "num_vq_embeddings": 256,
-        "vq_embedding_dim": 64,
-        "prenet_channels": 256,
-        "num_speakers": 102,
-        "speaker_embedding_dim": 256,
-        "decoder_channels": 1024,
-        "condition_channels": 256,
-        "learning_rate": 1e-4,
-        "sample_frames": 128,
-        "num_steps": 200000,
-        "batch_size": 32,
+        "encoder": {
+            "channels": 768
+        },
+        "codebook": {
+            "num_embeddings": 512,
+            "embedding_dim": 64,
+            "jitter": 0.5
+        },
+        "vocoder": {
+            "conditioning_channels": 128,
+            "num_speakers": 102,
+            "speaker_embedding_dim": 64,
+            "embedding_dim": 256,
+            "rnn_channels": 896,
+            "fc_channels": 256
+        }
+    },
+
+    "training": {
+        "batch_size": 42,
+        "learning_rate": 4e-4,
+        "sample_frames": 24,
+        "num_steps": 600000,
         "checkpoint_interval": 25000
     }
 }

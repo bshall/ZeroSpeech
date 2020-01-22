@@ -1,85 +1,88 @@
 import argparse
-import os
+from pathlib import Path
+import librosa
+import scipy
+import csv
 import numpy as np
-import json
 from multiprocessing import cpu_count
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from tqdm import tqdm
-from utils import load_wav, melspectrogram
-import random
-import glob
-from itertools import chain
 
 
-def process_wav(wav_path, mel_path, params):
-    wav = load_wav(wav_path, sample_rate=params["preprocessing"]["sample_rate"])
-    wav /= np.abs(wav).max() * 0.999
-    mel = melspectrogram(wav, sample_rate=params["preprocessing"]["sample_rate"],
-                         preemph=params["preprocessing"]["preemph"],
-                         num_mels=params["preprocessing"]["num_mels"],
-                         num_fft=params["preprocessing"]["num_fft"],
-                         min_level_db=params["preprocessing"]["min_level_db"],
-                         hop_length=params["preprocessing"]["hop_length"],
-                         win_length=params["preprocessing"]["win_length"],
-                         fmin=params["preprocessing"]["fmin"])
-
-    speaker = os.path.splitext(os.path.split(wav_path)[-1])[0].split("_")[0]
-    np.save(mel_path, mel)
-    return speaker, mel_path, len(mel)
+def preemphasis(x, preemph):
+    return scipy.signal.lfilter([1, -preemph], [1], x)
 
 
-def preprocess(wav_dirs, out_dir, num_workers, params):
-    mel_out_dir = os.path.join(out_dir, "mels")
-    os.makedirs(out_dir, exist_ok=True)
-    os.makedirs(mel_out_dir, exist_ok=True)
+def mulaw_encode(x, mu):
+    mu = mu - 1
+    fx = np.sign(x) * np.log1p(mu * np.abs(x)) / np.log1p(mu)
+    return np.floor((fx + 1) / 2 * mu + 0.5)
 
-    executor = ProcessPoolExecutor(max_workers=num_workers)
+
+def mulaw_decode(y, mu):
+    mu = mu - 1
+    x = np.sign(y) / mu * ((1 + mu) ** np.abs(y) - 1)
+    return x
+
+
+def process_wav(wav_path, out_path, params, offset=0.0, duration=None):
+    wav, _ = librosa.load(wav_path.with_suffix(".wav"), sr=params["preprocessing"]["sample_rate"],
+                          offset=offset, duration=duration)
+    wav = wav / np.abs(wav).max() * 0.999
+
+    mel = librosa.feature.melspectrogram(preemphasis(wav, params["preprocessing"]["preemph"]),
+                                         sr=params["preprocessing"]["sample_rate"],
+                                         n_fft=params["preprocessing"]["num_fft"],
+                                         n_mels=params["preprocessing"]["num_mels"],
+                                         hop_length=params["preprocessing"]["hop_length"],
+                                         win_length=params["preprocessing"]["win_length"],
+                                         fmin=params["preprocessing"]["fmin"],
+                                         power=1)
+    logmel = librosa.amplitude_to_db(mel, top_db=params["preprocessing"]["top_db"])
+    logmel = logmel / params["preprocessing"]["top_db"] + 1
+
+    wav = mulaw_encode(wav, mu=2 ** params["preprocessing"]["bits"])
+
+    np.save(out_path.with_suffix(".wav.npy"), wav)
+    np.save(out_path.with_suffix(".mel.npy"), logmel)
+    return out_path, logmel.shape[-1]
+
+
+def preprocess(args, params):
+    in_dir, out_dir = Path(args.in_dir), Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    executor = ProcessPoolExecutor(max_workers=args.num_workers)
     futures = []
-    wav_paths = chain.from_iterable(glob.iglob("{}/*.wav".format(dir), recursive=True) for dir in wav_dirs)
-    for wav_path in wav_paths:
-        fid = os.path.basename(wav_path).replace(".wav", ".npy")
-        mel_path = os.path.join(mel_out_dir, fid)
-        futures.append(executor.submit(partial(process_wav, wav_path, mel_path, params)))
+    with open(args.manifest_path) as file:
+        reader = csv.reader(file)
+        for in_path, start, duration, out_path in reader:
+            wav_path = in_dir / in_path
+            out_path = out_dir / out_path
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            futures.append(executor.submit(partial(process_wav, wav_path, out_path, params,
+                                                   float(start), float(duration))))
 
-    metadata = [future.result() for future in tqdm(futures)]
-    write_metadata(metadata, out_dir, params)
+    results = [future.result() for future in tqdm(futures)]
 
-
-def write_metadata(metadata, out_dir, params):
-    random.shuffle(metadata)
-    test = metadata[-params["preprocessing"]["num_evaluation_utterances"]:]
-    train = metadata[:-params["preprocessing"]["num_evaluation_utterances"]]
-
-    speakers = set([m[0] for m in metadata])
-    with open(os.path.join(out_dir, "speakers.txt"), "w", encoding="utf-8") as f:
-        for speaker in speakers:
-            f.write(speaker + "\n")
-
-    with open(os.path.join(out_dir, "test.txt"), "w", encoding="utf-8") as f:
-        for m in test:
-            f.write("|".join([str(x) for x in m]) + "\n")
-
-    with open(os.path.join(out_dir, "train.txt"), "w", encoding="utf-8") as f:
-        for m in train:
-            f.write("|".join([str(x) for x in m]) + "\n")
-
-    frames = sum([m[2] for m in metadata])
+    lengths = [x[-1] for x in results]
+    frames = sum(lengths)
     frame_shift_ms = params["preprocessing"]["hop_length"] / params["preprocessing"]["sample_rate"]
     hours = frames * frame_shift_ms / 3600
-    print('Wrote %d utterances, %d frames (%.2f hours)' % (len(metadata), frames, hours))
+    print("Wrote {} utterances, {} frames ({:.2f} hours)".format(len(lengths), frames, hours))
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", default="data")
-    parser.add_argument("--num-workers", type=int, default=5)
-    parser.add_argument("--language", type=str, default="./english")
-    with open("config.json") as f:
-        params = json.load(f)
+    parser.add_argument("--in-dir", type=str)
+    parser.add_argument("--out-dir", type=str)
+    parser.add_argument("--manifest-path", type=str)
+    parser.add_argument("--num-workers", type=int, default=cpu_count())
+    with open("config.json") as file:
+        params = json.load(file)
     args = parser.parse_args()
-    wav_dirs = [os.path.join(args.language, "train", "unit"), os.path.join(args.language, "train", "voice")]
-    preprocess(wav_dirs, args.output, args.num_workers, params)
+    preprocess(args, params)
 
 
 if __name__ == "__main__":

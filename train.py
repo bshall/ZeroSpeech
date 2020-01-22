@@ -1,92 +1,108 @@
 import argparse
-import os
+from pathlib import Path
 import json
 
-import numpy as np
 from tqdm import tqdm
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from dataset import MelDataset
+from dataset import SpeechDataset
 from model import Model
+import apex.amp as amp
+
+from torch.utils.tensorboard import SummaryWriter
 
 
-def save_checkpoint(model, optimizer, step, checkpoint_dir):
+def save_checkpoint(model, optimizer, amp, step, checkpoint_dir):
     checkpoint_state = {
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
+        "amp": amp.state_dict(),
         "step": step}
-    checkpoint_path = os.path.join(
-        checkpoint_dir, "model.ckpt-{}.pt".format(step))
+    checkpoint_path = checkpoint_dir / "model.ckpt-{}.pt".format(step)
     torch.save(checkpoint_state, checkpoint_path)
     print("Saved checkpoint: {}".format(checkpoint_path))
 
 
 def train_fn(args, params):
+    writer = SummaryWriter(Path("./runs") / args.checkpoint_dir)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = Model(mel_channels=params["preprocessing"]["num_mels"],
-                  encoder_channels=params["model"]["encoder_channels"],
-                  num_vq_embeddings=params["model"]["num_vq_embeddings"],
-                  vq_embedding_dim=params["model"]["vq_embedding_dim"],
-                  prenet_channels=params["model"]["prenet_channels"],
-                  num_speakers=params["model"]["num_speakers"],
-                  speaker_embedding_dim=params["model"]["speaker_embedding_dim"],
-                  decoder_channels=params["model"]["decoder_channels"],
-                  condition_channels=params["model"]["condition_channels"])
+    model = Model(in_channels=params["preprocessing"]["num_mels"],
+                  encoder_channels=params["model"]["encoder"]["channels"],
+                  num_codebook_embeddings=params["model"]["codebook"]["num_embeddings"],
+                  codebook_embedding_dim=params["model"]["codebook"]["embedding_dim"],
+                  num_speakers=params["model"]["vocoder"]["num_speakers"],
+                  speaker_embedding_dim=params["model"]["vocoder"]["speaker_embedding_dim"],
+                  conditioning_channels=params["model"]["vocoder"]["conditioning_channels"],
+                  embedding_dim=params["model"]["vocoder"]["embedding_dim"],
+                  rnn_channels=params["model"]["vocoder"]["rnn_channels"],
+                  fc_channels=params["model"]["vocoder"]["fc_channels"],
+                  bits=params["preprocessing"]["bits"],
+                  hop_length=params["preprocessing"]["hop_length"],
+                  jitter=params["model"]["codebook"]["jitter"])
     model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=params["model"]["learning_rate"])
+    optimizer = optim.Adam(model.parameters(), lr=params["training"]["learning_rate"])
+
+    model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
     if args.resume is not None:
         print("Resume checkpoint from: {}:".format(args.resume))
         checkpoint = torch.load(args.resume, map_location=lambda storage, loc: storage)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
+        amp.load_state_dict(checkpoint["amp"])
         global_step = checkpoint["step"]
     else:
         global_step = 0
 
-    dataset = MelDataset(meta_file=os.path.join(args.data_dir, "train.txt"),
-                         speakers_file=os.path.join(args.data_dir, "speakers.txt"),
-                         sample_frames=params["model"]["sample_frames"])
+    dataset = SpeechDataset(root=args.data_dir,
+                            sample_frames=params["training"]["sample_frames"],
+                            hop_length=params["preprocessing"]["hop_length"],
+                            sample_rate=params["preprocessing"]["sample_rate"])
 
-    dataloader = DataLoader(dataset, batch_size=params["model"]["batch_size"],
+    dataloader = DataLoader(dataset, batch_size=params["training"]["batch_size"],
                             shuffle=True, num_workers=args.num_workers,
                             pin_memory=True)
 
-    num_epochs = params["model"]["num_steps"] // len(dataloader) + 1
+    num_epochs = params["training"]["num_steps"] // len(dataloader) + 1
     start_epoch = global_step // len(dataloader) + 1
 
     for epoch in range(start_epoch, num_epochs + 1):
-        running_recon_loss = 0
-        running_vq_loss = 0
-        running_perplexity = 0
+        average_recon_loss = average_vq_loss = average_perplexity = 0
 
-        for i, (mels, speakers) in enumerate(tqdm(dataloader), 1):
-            mels, speakers = mels.to(device), speakers.to(device)
+        for i, (audio, mels, speakers) in enumerate(tqdm(dataloader), 1):
+            audio, mels, speakers = audio.to(device), mels.to(device), speakers.to(device)
 
-            output, vq_loss, perplexity = model(mels, speakers)
-            recon_loss = F.mse_loss(output, mels[:, 1:, :])
+            output, vq_loss, perplexity = model(audio[:, :-1], mels, speakers)
+            recon_loss = F.cross_entropy(output.transpose(1, 2), audio[:, 1:])
             loss = recon_loss + vq_loss
 
             optimizer.zero_grad()
-            loss.backward()
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), 1)
             optimizer.step()
 
-            running_recon_loss += recon_loss.item()
-            average_recon_loss = running_recon_loss / (i + 1)
-            running_vq_loss += vq_loss.item()
-            average_vq_loss = running_vq_loss / (i + 1)
-            running_perplexity += perplexity.item()
-            average_perplexity = running_perplexity / (i + 1)
+            average_recon_loss += (recon_loss.item() - average_recon_loss) / i
+            average_vq_loss += (vq_loss.item() - average_vq_loss) / i
+            average_perplexity += (perplexity.item() - average_perplexity) / i
 
             global_step += 1
 
-            if global_step % params["model"]["checkpoint_interval"] == 0:
-                save_checkpoint(model, optimizer, global_step, args.checkpoint_dir)
+            if global_step % params["training"]["checkpoint_interval"] == 0:
+                save_checkpoint(model, optimizer, amp, global_step, Path(args.checkpoint_dir))
+
+        writer.add_scalar("recon_loss/train", average_recon_loss, global_step)
+        writer.add_scalar("vq_loss/train", average_vq_loss, global_step)
+        writer.add_scalar("average_perplexity", average_perplexity, global_step)
+        # writer.add_embedding(model.codebook.embedding, tag="codebook", global_step=global_step)
+        # writer.add_embedding(model.decoder.speaker_embedding.weight, tag="speaker_embedding", global_step=global_step)
 
         print("epoch:{}, recon loss:{:.2E}, vq loss:{:.2E}, perpexlity:{:.3f}"
               .format(epoch, average_recon_loss, average_vq_loss, average_perplexity))
@@ -94,12 +110,12 @@ def train_fn(args, params):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers.")
+    parser.add_argument("--num_workers", type=int, default=6, help="Number of dataloader workers.")
+    parser.add_argument("--checkpoint-dir", type=str, help="Directory to save checkpoints.")
+    parser.add_argument("--data-dir", type=str)
     parser.add_argument("--resume", type=str, default=None, help="Checkpoint path to resume")
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/", help="Directory to save checkpoints.")
-    parser.add_argument("--data_dir", type=str, default="./data")
     args = parser.parse_args()
-    with open("config.json") as f:
-        params = json.load(f)
-    os.makedirs(args.checkpoint_dir, exist_ok=True)
+    with open("config.json") as file:
+        params = json.load(file)
+    Path(args.checkpoint_dir).mkdir(parents=True, exist_ok=True)
     train_fn(args, params)
