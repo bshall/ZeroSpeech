@@ -19,7 +19,7 @@
         "codebook": {
             "num_embeddings": 512,
             "embedding_dim": 64,
-            "jitter": 0.5
+            "jitter": 0
         },
         "vocoder": {
             "conditioning_channels": 128,

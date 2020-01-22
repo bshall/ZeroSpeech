@@ -34,18 +34,20 @@ Voice conversion samples can be found here.
     
 6. Extract train/test Mel spectrograms and preprocess audio:
     ```
-    python preprocess.py --in-dir=/path/to/ZeroSpeech2019 --out-dir=datasets/ZeroSpeech2019 
-        --split-path=datasets/ZeroSpeech2019/english/train.csv
+    python preprocess.py --in-dir=/path/to/ZeroSpeech2019 --out-dir=datasets/ZeroSpeech2019 --split-path=datasets/ZeroSpeech2019/english/train.csv
     ```
     
 7. Train the model:
     ```
-    python train.py --checkpoint-dir=checkpoints/ZeroSpeech2019/english 
-        --data-dir=datasets/ZeroSpeech2019/english
+    python train.py --checkpoint-dir=checkpoints/ZeroSpeech2019/english --data-dir=datasets/ZeroSpeech2019/english
     ```
     
 8. Voice conversion:
     ```
-    python convert.py --checkpoint=path/to/checkpoint --data-dir=datasets/ZeroSpeech2019/english
-        --synthesis-list=datasets/ZeroSpeech2019/english/synthesis.csv
+    python convert.py --checkpoint=path/to/checkpoint --data-dir=datasets/ZeroSpeech2019/english --out-dir=converted/ZeroSpeech2019/english --synthesis-list=datasets/ZeroSpeech2019/english/synthesis.csv
+    ```
+    
+9. Encode test data for evaluation:
+    ```
+    python encode.py --checkpoint=path/to/checkpoint --in-dir=datasets/ZeroSpeech2019/english/test --out-dir=encoded/ZeroSpeech2019/english/test
     ```

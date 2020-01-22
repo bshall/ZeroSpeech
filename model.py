@@ -215,7 +215,6 @@ class Model(nn.Module):
         with torch.no_grad():
             mel = self.encoder(mel)
             mel, _, perplexity = self.codebook(mel)
-            mel = self.jitter(mel)
             output = self.decoder.generate(mel, speaker)
         self.train()
         return output

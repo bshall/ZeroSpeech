@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 def encode_dataset(args, params):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     model = Model(in_channels=params["preprocessing"]["num_mels"],
                   encoder_channels=params["model"]["encoder"]["channels"],
                   num_codebook_embeddings=params["model"]["codebook"]["num_embeddings"],
