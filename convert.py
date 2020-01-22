@@ -53,7 +53,7 @@ if __name__ == "__main__":
     model_step = checkpoint["step"]
 
     gen_dir = Path(args.out_dir)
-    gen_dir.mkdir(exist_ok=True)
+    gen_dir.mkdir(exist_ok=True, parents=True)
 
     for mel_path, speaker_id in tqdm(synthesis_list):
         mel = np.load(mel_path.with_suffix(".mel.npy"))

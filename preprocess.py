@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 import librosa
 import scipy
+import json
 import csv
 import numpy as np
 from multiprocessing import cpu_count
@@ -55,7 +56,7 @@ def preprocess(args, params):
 
     executor = ProcessPoolExecutor(max_workers=args.num_workers)
     futures = []
-    with open(args.manifest_path) as file:
+    with open(args.split_path) as file:
         reader = csv.reader(file)
         for in_path, start, duration, out_path in reader:
             wav_path = in_dir / in_path
@@ -77,7 +78,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--in-dir", type=str)
     parser.add_argument("--out-dir", type=str)
-    parser.add_argument("--manifest-path", type=str)
+    parser.add_argument("--split-path", type=str)
     parser.add_argument("--num-workers", type=int, default=cpu_count())
     with open("config.json") as file:
         params = json.load(file)

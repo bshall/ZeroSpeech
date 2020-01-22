@@ -14,5 +14,38 @@ Voice conversion samples can be found here.
 
 2. Clone the repo:
     ```
-    git clone 
+    git clone https://github.com/bshall/ZeroSpeech
+    cd ./ZeroSpeech
+    ```
+
+3. Install requirements:
+    ```
+    pip install requirements.txt
+
+    ```
+    
+4. Install [NVIDIA/apex](https://github.com/NVIDIA/apex) for mixed precision training.
+    
+5. Download and extract ZeroSpeech2019: TTS without the T English dataset:
+    ```
+    wget https://download.zerospeech.com/2019/english.tgz
+    tar -xvzf english.tgz
+    ```
+    
+6. Extract train/test Mel spectrograms and preprocess audio:
+    ```
+    python preprocess.py --in-dir=/path/to/ZeroSpeech2019 --out-dir=datasets/ZeroSpeech2019 
+        --split-path=datasets/ZeroSpeech2019/english/train.csv
+    ```
+    
+7. Train the model:
+    ```
+    python train.py --checkpoint-dir=checkpoints/ZeroSpeech2019/english 
+        --data-dir=datasets/ZeroSpeech2019/english
+    ```
+    
+8. Voice conversion:
+    ```
+    python convert.py --checkpoint=path/to/checkpoint --data-dir=datasets/ZeroSpeech2019/english
+        --synthesis-list=datasets/ZeroSpeech2019/english/synthesis.csv
     ```
