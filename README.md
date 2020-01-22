@@ -3,7 +3,10 @@
 Train and evaluate models for the ZeroSpeech challenges.
 Voice conversion samples can be found here.
 
-![network](network.png?raw=true "VQ-VAE for Acoustic Unit Discovery")
+<p align="center">
+  <img width="384" height="563" alt="VQ-VAE for Acoustic Unit Discovery"
+    src="https://raw.githubusercontent.com/bshall/ZeroSpeech/master/network.png">
+</p>
 
 ## Quick Start
 
