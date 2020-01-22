@@ -30,7 +30,7 @@ def average_abx(filename, task_type):
                             as_index=False)
         df = groups["score"].mean()
     elif task_type == "within":
-        arr = np.array(map(ast.literal_eval, df["by"]))
+        arr = list(map(ast.literal_eval, df["by"]))
         df["speaker"] = [e for e, f, g in arr]
         df["context"] = [f for e, f, g in arr]
 
@@ -50,33 +50,33 @@ def average_abx(filename, task_type):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", type=str, help="Checkpoint path to resume")
-    parser.add_argument("--gen-dir", type=str, default="./generated")
-    parser.add_argument("--speaker-list", type=str)
-    parser.add_argument("--mel-path", type=str)
-    parser.add_argument("--speaker", type=str)
+    parser.add_argument("--task-type", type=str)
+    parser.add_argument("--task-path", type=str)
+    parser.add_argument("--feature-dir", type=str)
+    parser.add_argument("--out-dir", type=str)
     args = parser.parse_args()
 
-    with Path("config.json").open() as file:
-        params = json.load(file)
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    task_path = Path("../ABX/info_test/by-context-across-speakers.abx")
+    # task_path = Path("../ABX/info_test/by-context-across-speakers.abx")
     # task_path = Path("../../Datasets/zerospeech2017/data/test/english/1s/1s_across.abx")
+    # task_path = Path("../../Datasets/zerospeech2017/data/test/french/1s/1s_across.abx")
     # task_path = Path("english_across.abx")
-    feature_path = Path("./features.features")
-    distance_path = Path("./data.distance")
-    score_path = Path("./data.score")
-    analyze_path = Path("./data.csv")
+    feature_path = out_dir / "features.features"
+    distance_path = out_dir / "data.distance"
+    score_path = out_dir / "data.score"
+    analyze_path = out_dir / "data.csv"
 
-    convert(str("encoded/ZeroSpeech2019/english/test/"))
+    convert(args.feature_dir, h5_filename=str(feature_path))
 
     distances.compute_distances(
-        str(feature_path), "features", str(task_path),
+        str(feature_path), "features", str(args.task_path),
         str(distance_path), dtw_cosine_distance,
-        normalized=True, n_cpu=4)
+        normalized=True, n_cpu=6)
 
-    score.score(str(task_path), str(distance_path), str(score_path))
+    score.score(str(args.task_path), str(distance_path), str(score_path))
 
-    analyze.analyze(str(task_path), str(score_path), str(analyze_path))
+    analyze.analyze(str(args.task_path), str(score_path), str(analyze_path))
 
-    print(average_abx(str(analyze_path), "across"))
+    print(average_abx(str(analyze_path), args.task_type))

@@ -6,23 +6,29 @@ import torch
 import numpy as np
 import librosa
 from model import Model
+from tqdm import tqdm
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, help="Checkpoint path to resume")
-    parser.add_argument("--gen-dir", type=str, default="./generated")
-    parser.add_argument("--speaker-list", type=str)
-    parser.add_argument("--mel-path", type=str)
-    parser.add_argument("--speaker", type=str)
+    parser.add_argument("--data-dir", type=str)
+    parser.add_argument("--out-dir", type=str)
+    parser.add_argument("--synthesis-list", type=str)
     args = parser.parse_args()
+
+    data_dir = Path(args.data_dir)
 
     with open("config.json") as file:
         params = json.load(file)
 
-    with open(args.speaker_list) as file:
+    with open(data_dir / "speakers.csv") as file:
         reader = csv.reader(file)
         speakers = sorted([speaker for speaker, in reader])
+
+    with open(args.synthesis_list) as file:
+        reader = csv.reader(file)
+        synthesis_list = [(data_dir / mel_path, speaker) for mel_path, speaker in reader]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -37,7 +43,8 @@ if __name__ == "__main__":
                   rnn_channels=params["model"]["vocoder"]["rnn_channels"],
                   fc_channels=params["model"]["vocoder"]["fc_channels"],
                   bits=params["preprocessing"]["bits"],
-                  hop_length=params["preprocessing"]["hop_length"])
+                  hop_length=params["preprocessing"]["hop_length"],
+                  jitter=params["model"]["codebook"]["jitter"])
     model.to(device)
 
     print("Load checkpoint from: {}:".format(args.checkpoint))
@@ -45,15 +52,15 @@ if __name__ == "__main__":
     model.load_state_dict(checkpoint["model"])
     model_step = checkpoint["step"]
 
-    mel_path = Path(args.mel_path)
-    mel = np.load(mel_path)
-    mel = torch.FloatTensor(mel).unsqueeze(0).to(device)
-    speaker = torch.LongTensor([speakers.index(args.speaker)]).to(device)
-    output = model.generate(mel, speaker)
-
-    gen_dir = Path(args.gen_dir)
+    gen_dir = Path(args.out_dir)
     gen_dir.mkdir(exist_ok=True)
 
-    utterance_id = mel_path.stem
-    path = Path(gen_dir) / "gen_{}_to_{}_model_steps_{}.wav".format(utterance_id, args.speaker, model_step)
-    librosa.output.write_wav(path, output.astype(np.float32), sr=params["preprocessing"]["sample_rate"])
+    for mel_path, speaker_id in tqdm(synthesis_list):
+        mel = np.load(mel_path.with_suffix(".mel.npy"))
+        mel = torch.FloatTensor(mel).unsqueeze(0).to(device)
+        speaker = torch.LongTensor([speakers.index(speaker_id)]).to(device)
+        output = model.generate(mel, speaker)
+
+        utterance_id = mel_path.stem.split("_")[1]
+        path = Path(gen_dir) / "{}_{}.wav".format(speaker_id, utterance_id)
+        librosa.output.write_wav(path, output.astype(np.float32), sr=params["preprocessing"]["sample_rate"])

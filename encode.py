@@ -3,9 +3,7 @@ from pathlib import Path
 import json
 import numpy as np
 import torch
-import torch.nn.functional as F
 from model import Model
-
 from tqdm import tqdm
 
 
@@ -22,7 +20,8 @@ def encode_dataset(args, params):
                   rnn_channels=params["model"]["vocoder"]["rnn_channels"],
                   fc_channels=params["model"]["vocoder"]["fc_channels"],
                   bits=params["preprocessing"]["bits"],
-                  hop_length=params["preprocessing"]["hop_length"])
+                  hop_length=params["preprocessing"]["hop_length"],
+                  jitter=params["model"]["codebook"]["jitter"])
     model.to(device)
 
     print("Load checkpoint from: {}:".format(args.checkpoint))
@@ -38,22 +37,12 @@ def encode_dataset(args, params):
     in_dir = Path(args.in_dir)
     for path in tqdm(in_dir.rglob("*.mel.npy")):
         mel = torch.from_numpy(np.load(path)).unsqueeze(0).to(device)
-        speaker = torch.LongTensor([101]).to(device)
         with torch.no_grad():
             x = model.encoder(mel)
             x, _, _ = model.codebook(x)
-            # x = F.interpolate(x.transpose(1, 2), scale_factor=2)
-            # x = x.transpose(1, 2)
-            #
-            # speaker = model.decoder.speaker_embedding(speaker)
-            # speaker = speaker.unsqueeze(1).expand(-1, x.size(1), -1)
-
-            # x = torch.cat((x, speaker), dim=-1)
-            # x, _ = model.decoder.rnn1(x)
 
         output = x.squeeze().cpu().numpy()
-        # time = hop_length_seconds * (2 * np.arange(1, len(output) + 1) - 0.5)
-        time = hop_length_seconds * np.arange(0, 80) + hop_length_seconds / 2
+        time = np.linspace(0, (mel.size(-1) - 1) * hop_length_seconds, len(output))
         relative_path = path.relative_to(in_dir).with_suffix("")
         out_path = out_dir / relative_path
         out_path.parent.mkdir(exist_ok=True, parents=True)
@@ -70,5 +59,3 @@ if __name__ == "__main__":
         params = json.load(file)
     encode_dataset(args, params)
 
-    import textgrid
-    textgrid.TextGrid()

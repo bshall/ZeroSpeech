@@ -42,7 +42,8 @@ def train_fn(args, params):
                   rnn_channels=params["model"]["vocoder"]["rnn_channels"],
                   fc_channels=params["model"]["vocoder"]["fc_channels"],
                   bits=params["preprocessing"]["bits"],
-                  hop_length=params["preprocessing"]["hop_length"])
+                  hop_length=params["preprocessing"]["hop_length"],
+                  jitter=params["model"]["codebook"]["jitter"])
     model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=params["training"]["learning_rate"])
