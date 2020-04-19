@@ -1,0 +1,5 @@
+numpy>=1.17
+scipy>=1.4
+librosa>=0.7
+tqdm>=4.45.0
+hydra-core>=0.11

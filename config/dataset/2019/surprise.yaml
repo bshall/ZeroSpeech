@@ -1,0 +1,5 @@
+dataset:
+  dataset: 2019
+  language: surprise
+  path: 2019/surprise
+  n_speakers: 113

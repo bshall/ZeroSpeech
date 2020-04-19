@@ -1,0 +1,9 @@
+defaults:
+    - dataset: 2019/english
+    - preprocessing: default
+    - model: default
+
+synthesis_list: ???
+in_dir: ???
+out_dir: ???
+checkpoint: ???

@@ -1,0 +1,21 @@
+model:
+    encoder:
+        class: model.Encoder
+        params:
+            in_channels: ${preprocessing.n_mels}
+            channels: 768
+            n_embeddings: 512
+            embedding_dim: 64
+            jitter: 0.5
+    decoder:
+        class: model.Decoder
+        params:
+            in_channels: ${model.encoder.params.embedding_dim}
+            conditioning_channels: 128
+            n_speakers: ${dataset.n_speakers}
+            speaker_embedding_dim: 64
+            mu_embedding_dim: 256
+            rnn_channels: 896
+            fc_channels: 256
+            bits: ${preprocessing.bits}
+            hop_length: ${preprocessing.hop_length}

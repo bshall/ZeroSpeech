@@ -1,0 +1,13 @@
+training:
+    batch_size: 52
+    sample_frames: 32
+    n_steps: 500000
+    optimizer:
+        lr: 4e-4
+    scheduler:
+        milestones:
+            - 300000
+            - 400000
+        gamma: 0.5
+    checkpoint_interval: 20000
+    n_workers: 8

@@ -1,0 +1,8 @@
+defaults:
+    - dataset: 2019/english
+    - preprocessing: default
+    - model: default
+    - training: default
+
+resume: False
+checkpoint_dir: ???
