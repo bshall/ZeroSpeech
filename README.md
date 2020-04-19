@@ -2,7 +2,7 @@
 
 Train and evaluate models for the ZeroSpeech challenges.
 Voice conversion samples can be found [here](https://bshall.github.io/ZeroSpeech/).
-Pretrained weights for the 2019 english and surprise models can be found here.
+Pretrained weights for the 2019 english and surprise models can be found [here](https://github.com/bshall/ZeroSpeech/releases/tag/v0.1).
 
 <p align="center">
   <img width="384" height="563" alt="VQ-VAE for Acoustic Unit Discovery"
@@ -27,8 +27,11 @@ Pretrained weights for the 2019 english and surprise models can be found here.
 ## Training
 
 1.  Download and extract the [ZeroSpeech2020 datasets](https://download.zerospeech.com/).
+
+2.  Download the train/test splits [here](https://github.com/bshall/ZeroSpeech/releases/tag/v0.1) 
+    and extract in the root directory of the repo.
     
-2.  Preprocess audio and extract train/test log-Mel spectrograms:
+3.  Preprocess audio and extract train/test log-Mel spectrograms:
     ```
     python preprocess.py in_dir=/path/to/dataset dataset=[2019/english or 2019/surprise]
     ```
@@ -53,7 +56,7 @@ Pretrained weights for the 2019 english and surprise models can be found here.
    ```
     python convert.py checkpoint=path/to/checkpoint in_dir=path/to/wavs out_dir=path/to/out_dir synthesis_list=path/to/synthesis_list dataset=[2019/english or 2019/surprise]
    ```
-   Note: `the synthesis list` is a `json` file:
+   Note: the `synthesis list` is a `json` file:
    ```
     [
         [
@@ -69,6 +72,7 @@ Pretrained weights for the 2019 english and surprise models can be found here.
    ```
    e.g. python convert.py checkpoint=checkpoints/2019english/model.ckpt-500000.pt in_dir=../datasets/2020/2019 out_dir=submission/2019/english/test synthesis_list=datasets/2019/english/synthesis.json dataset=2019/english
    ```
+   Voice conversion samples can be found [here](https://bshall.github.io/ZeroSpeech/).
 
 ### ABX Score
     
@@ -82,7 +86,7 @@ Pretrained weights for the 2019 english and surprise models can be found here.
     
 2. Run ABX evaluation script (see [bootphon/zerospeech2020](https://github.com/bootphon/zerospeech2020)).
 
-For example, the ABX score for the pretrained english model (available here) is:
+The ABX score for the pretrained english model (available [here](https://github.com/bshall/ZeroSpeech/releases/tag/v0.1)) is:
 ```
 {
     "2019": {
