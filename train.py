@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import SpeechDataset
+from model import Encoder, Decoder
 
 
 def save_checkpoint(encoder, decoder, optimizer, amp, scheduler, step, checkpoint_dir):
@@ -35,8 +36,8 @@ def train_model(cfg):
     writer = SummaryWriter(tensorboard_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    encoder = hydra.utils.instantiate(cfg.model.encoder)
-    decoder = hydra.utils.instantiate(cfg.model.decoder)
+    encoder = Encoder(**cfg.model.encoder)
+    decoder = Decoder(**cfg.model.decoder)
     encoder.to(device)
     decoder.to(device)
 

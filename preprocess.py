@@ -53,7 +53,7 @@ def process_wav(wav_path, out_path, sr=160000, preemph=0.97, n_fft=2048, n_mels=
 
 @hydra.main(config_path="config/preprocessing.yaml")
 def preprocess_dataset(cfg):
-    in_dir = Path(utils.to_absolute_path(cfg.dataset.in_dir))
+    in_dir = Path(utils.to_absolute_path(cfg.in_dir))
     out_dir = Path(utils.to_absolute_path("datasets")) / str(cfg.dataset.dataset)
     out_dir.mkdir(parents=True, exist_ok=True)
 

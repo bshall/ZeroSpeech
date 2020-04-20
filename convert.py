@@ -9,6 +9,7 @@ import librosa
 from tqdm import tqdm
 
 from preprocess import preemphasis
+from model import Encoder, Decoder
 
 
 @hydra.main(config_path="config/convert.yaml")
@@ -27,8 +28,8 @@ def convert(cfg):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    encoder = hydra.utils.instantiate(cfg.model.encoder)
-    decoder = hydra.utils.instantiate(cfg.model.decoder)
+    encoder = Encoder(**cfg.model.encoder)
+    decoder = Decoder(**cfg.model.decoder)
     encoder.to(device)
     decoder.to(device)
 

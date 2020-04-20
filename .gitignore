@@ -114,3 +114,9 @@ checkpoints/
 
 # Datasets
 datasets/
+
+# Submission
+submission/
+
+# Hydra outputs
+outputs/

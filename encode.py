@@ -8,6 +8,8 @@ from tqdm import tqdm
 
 import torch
 
+from model import Encoder
+
 
 @hydra.main(config_path="config/encode.yaml")
 def encode_dataset(cfg):
@@ -20,7 +22,7 @@ def encode_dataset(cfg):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    encoder = hydra.utils.instantiate(cfg.model.encoder)
+    encoder = Encoder(**cfg.model.encoder)
     encoder.to(device)
 
     print("Load checkpoint from: {}:".format(cfg.checkpoint))
