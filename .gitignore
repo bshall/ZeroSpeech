@@ -108,3 +108,15 @@ venv.bak/
 
 # Preprocessed data
 *.npy
+
+# Model checkpoints
+checkpoints/
+
+# Datasets
+datasets/
+
+# Submission
+submission/
+
+# Hydra outputs
+outputs/
