@@ -20,7 +20,7 @@ class SpeechDataset(Dataset):
             metadata = json.load(file)
             self.metadata = [
                 Path(out_path) for _, _, duration, out_path in metadata
-                if float(duration) > min_duration
+                if duration > min_duration
             ]
 
     def __len__(self):

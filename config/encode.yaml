@@ -5,3 +5,4 @@ defaults:
 
 checkpoint: ???
 out_dir: ???
+save_auxiliary: False
