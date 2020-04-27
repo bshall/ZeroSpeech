@@ -109,3 +109,16 @@ The ABX score for the pretrained english model (available [here](https://github.
     }
 }
 ```
+
+## References
+
+This work was based on:
+
+1.  Chorowski, Jan, et al. ["Unsupervised speech representation learning using wavenet autoencoders."](https://arxiv.org/abs/1901.08810)
+    IEEE/ACM transactions on audio, speech, and language processing 27.12 (2019): 2041-2053.
+
+2.  Lorenzo-Trueba, Jaime, et al. ["Towards achieving robust universal neural vocoding."](https://arxiv.org/abs/1811.06292)
+    INTERSPEECH. 2019.
+    
+3.  van den Oord, Aaron, and Oriol Vinyals. ["Neural discrete representation learning."](https://arxiv.org/abs/1711.00937)
+    Advances in Neural Information Processing Systems. 2017.
