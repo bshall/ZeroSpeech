@@ -7,6 +7,7 @@ import torch
 import numpy as np
 import librosa
 from tqdm import tqdm
+import pyloudnorm
 
 from preprocess import preemphasis
 from model import Encoder, Decoder
@@ -42,11 +43,14 @@ def convert(cfg):
     encoder.eval()
     decoder.eval()
 
+    meter = pyloudnorm.Meter(cfg.preprocessing.sr)
+
     for wav_path, speaker_id, out_filename in tqdm(synthesis_list):
         wav_path = in_dir / wav_path
         wav, _ = librosa.load(
             wav_path.with_suffix(".wav"),
             sr=cfg.preprocessing.sr)
+        ref_loudness = meter.integrated_loudness(wav)
         wav = wav / np.abs(wav).max() * 0.999
 
         mel = librosa.feature.melspectrogram(
@@ -67,6 +71,8 @@ def convert(cfg):
             z, _ = encoder.encode(mel)
             output = decoder.generate(z, speaker)
 
+        output_loudness = meter.integrated_loudness(output)
+        output = pyloudnorm.normalize.loudness(output, output_loudness, ref_loudness)
         path = out_dir / out_filename
         librosa.output.write_wav(path.with_suffix(".wav"), output.astype(np.float32), sr=cfg.preprocessing.sr)
 
