@@ -1,13 +1,21 @@
 # VQ-VAE for Acoustic Unit Discovery and Voice Conversion
 
-Train and evaluate VQ-VAE models for the [ZeroSpeech challenges](https://zerospeech.com/).
+Train and evaluate the VQ-VAE model for our submission to the [ZeroSpeech 2020 challenge](https://zerospeech.com/).
 Voice conversion samples can be found [here](https://bshall.github.io/ZeroSpeech/).
-Pretrained weights for the 2019 english and surprise models can be found [here](https://github.com/bshall/ZeroSpeech/releases/tag/v0.1).
+Pretrained weights for the 2019 English and Indonesian datasets can be found [here](https://github.com/bshall/ZeroSpeech/releases/tag/v0.1).
 
-<p align="center">
-  <img width="384" height="563" alt="VQ-VAE for Acoustic Unit Discovery"
-    src="https://raw.githubusercontent.com/bshall/ZeroSpeech/master/model.png">
-</p>
+<div align="center">
+    <img width="384" height="563" alt="VQ-VAE for Acoustic Unit Discovery" 
+      src="https://raw.githubusercontent.com/bshall/ZeroSpeech/master/model.png"><br>
+    <sup>
+        <strong>Fig 1:</strong> The <span style="color:#82B366;">encoder</span> takes a speech waveform sampled at 16 kHz as input and computes a log-Mel spectrogram. 
+        The spectrogram is processed by a stack of 5 convolutional layers, which downsamples the input by a factor of 2. 
+        In the <span style="color:#B85450;">bottleneck</span>, the output of the encoder is projected a sequence of continuous features.
+        The representation is then discretized using a vector quantization layer with 512 codes. 
+        Finally, the <span style="color:#9673A6;">decoder</span> tries to reconstruct the original waveform. 
+        To predict the next sample, we condition an autoregressive model on the output of the bottleneck, the speaker identity, and past waveform samples.
+    </sup>
+</div>
 
 # Quick Start
 
