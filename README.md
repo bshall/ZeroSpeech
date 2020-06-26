@@ -20,7 +20,7 @@ Pretrained weights for the 2019 English and Indonesian datasets can be found [he
 
 3.  Install pip dependencies:
     ```
-    pip install requirements.txt
+    pip install -r requirements.txt
     ```
 
 4.  For evaluation install [bootphon/zerospeech2020](https://github.com/bootphon/zerospeech2020).
