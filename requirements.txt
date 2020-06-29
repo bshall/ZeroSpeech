@@ -1,6 +1,7 @@
 numpy==1.18.2
 scipy==1.4.1
 librosa==0.7.2
+numba==0.48
 tqdm==4.45.0
 hydra-core==0.11.3
 pyloudnorm==0.1.0
