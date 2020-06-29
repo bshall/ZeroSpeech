@@ -40,7 +40,7 @@ Pretrained weights for the 2019 English and Indonesian datasets can be found [he
     For `dataset` choose between `2019/english` or `2019/surprise`.
     Other datasets will be added in the future.
     ```
-    e.g. python preprecess.py in_dir=../datasets/2020/2019 dataset=2019/english
+    e.g. python preprocess.py in_dir=../datasets/2020/2019 dataset=2019/english
     ```
     
 ## Training
